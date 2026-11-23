@@ -16,6 +16,13 @@
     "path": "design/home.png",
     "note": "把设计图放进项目后改名；没有设计图时把 kind 改成 none"
   },
+  "api": {
+    "source": "none",
+    "env": "test",
+    "enabled": false,
+    "allow": [],
+    "authEnv": ""
+  },
   "knownIssues": [],
   "notes": "通用模板：rules（项目校验命令）、tokens.files（token 文件）、baseline.pages（三同基准页）按项目补齐。"
 }

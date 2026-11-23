@@ -5,6 +5,32 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-23
+
+### Added
+
+- **第 4 个预设「UI 还原-接线」**（`ui-restore-integrator`，order 43）：把还原页面的数据层接到真实接口。
+  产出 `<run>/api-map.json`（UI 元素/动作 → method + path → 入参 → 响应字段 → 状态 → 证据）。
+  边界：只改 inScope 内的数据层与绑定；不判 UI、不改后端；找不到接口给 `blocked`，不编造；
+  凭据只从环境变量读；`prod-readonly` 时只允许 GET。
+- **档案 `api` 段**：`source`（`project` / `openapi` / `capture` / `none`）、`env`（`test` / `prod-readonly`）、
+  `enabled`（默认 `false`）、`allow`（host/path 白名单）、`authEnv`（凭据环境变量名）。
+  插件仍不联网、不执行命令、不读凭据，只把这段约定透给接线者与验收者。
+- **SKILL 第 4A 节「接口接线阶段」**与判定口径新增「接口层」门槛：`api-map` 存在、页面无 mock 冒充、
+  loading/empty/error/分页/重试覆盖、请求入参一致。
+- USAGE / `profiles/_schema.md` / README 同步更新；selftest 增加 api 段默认值与非法值告警用例。
+
+### Changed
+
+- 队长预设：`allowedAgentPresets` 增加 `ui-restore-integrator`；职责增加「静态还原后派接线者」；
+  边界增加「不自行编造接口或数据契约」。
+- 插件内「三个 Agent 预设」的统一表述改为四个。
+
+### Compatibility
+
+- 新增预设 id `ui-restore-integrator` 属于增量，既有预设 id 不变；只做视觉还原的旧用法不受影响
+  （档案不写 `api` 段时 `api.source = none`、`api.enabled = false`，接线阶段自动跳过）。
+
 ## [0.1.2] - 2026-11-23
 
 ### Added

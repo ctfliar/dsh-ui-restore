@@ -1219,6 +1219,36 @@ async function coreSuite() {
     assertThrows(() => normalizeProfile({ id: 'x', designSource: { kind: 'wysiwyg' } }), /designSource\.kind 非法/, '非法设计源');
   });
 
+  await test('项目档案 api 段：默认关闭；非法值告警并退回安全缺省', () => {
+    const sparse = normalizeProfile({ id: 'sparse' });
+    assertEqual(sparse.profile.api.source, 'none', '缺省 api.source');
+    assertEqual(sparse.profile.api.env, 'test', '缺省 api.env');
+    assertEqual(sparse.profile.api.enabled, false, '缺省 api.enabled');
+    assertEqual(sparse.profile.api.allow.length, 0, '缺省 api.allow');
+    assertEqual(sparse.profile.api.authEnv, '', '缺省 api.authEnv');
+
+    const configured = normalizeProfile({
+      id: 'wired',
+      api: { source: 'project', env: 'prod-readonly', enabled: true, allow: ['http://127.0.0.1:8080'], authEnv: 'APP_TOKEN' },
+    });
+    assertEqual(configured.profile.api.source, 'project', 'api.source 生效');
+    assertEqual(configured.profile.api.env, 'prod-readonly', 'api.env 生效');
+    assertEqual(configured.profile.api.enabled, true, 'api.enabled 生效');
+    assertEqual(configured.profile.api.allow[0], 'http://127.0.0.1:8080', 'api.allow 生效');
+    assertEqual(configured.profile.api.authEnv, 'APP_TOKEN', 'api.authEnv 生效');
+    assertEqual(configured.warnings.length, 0, '合法 api 段不应告警');
+
+    const warnings = [];
+    const bad = normalizeProfile({ id: 'bad', api: { source: 'swagger', env: 'staging', allow: 'http://x' } }, { warnings });
+    assertEqual(bad.profile.api.source, 'none', '非法 api.source 退回 none');
+    assertEqual(bad.profile.api.env, 'test', '非法 api.env 退回 test');
+    assertEqual(bad.profile.api.enabled, false, '未显式 enabled 时为 false');
+    assertEqual(bad.profile.api.allow.length, 0, '非数组 allow 被忽略');
+    assert(warnings.some((warning) => warning.includes('api.source')), 'api.source 告警');
+    assert(warnings.some((warning) => warning.includes('api.env')), 'api.env 告警');
+    assert(warnings.some((warning) => warning.includes('api.allow')), 'api.allow 告警');
+  });
+
   await test('探针页面采集函数语法自检 + 不引用模块作用域变量', () => {
     const sources = auditExpressionSource();
     assertEqual(sources.length, 2, '应导出两个页面采集函数');

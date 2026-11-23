@@ -1,7 +1,7 @@
 # 安装 dsh-ui-restore
 
 本插件是一个 DeepSeek Harness（DSH）bundle：装好后提供 4 个 Host 工具、1 个自动注册的技能
-（`ui-restore`）和 3 个 Agent 预设。本文按「前置条件 → 安装 → 自检 → 升级/卸载 → 排错」走。
+（`ui-restore`）和 4 个 Agent 预设（队长 / 画师 / 接线 / 验收）。本文按「前置条件 → 安装 → 自检 → 升级/卸载 → 排错」走。
 
 ## 1. 前置条件
 
@@ -89,5 +89,5 @@ dsh plugin --profile <profile> remove dsh-ui-restore
 | `缺少 playwright-core` | 源码 link 安装时没装依赖 | 在插件目录 `npm install`，或设 `DSH_UI_RESTORE_PLAYWRIGHT` 指向已安装的 playwright-core |
 | 源码安装时 `pnpm` 缺失 | 部分 DSH 安装流程用 pnpm | 安装 pnpm（`npm i -g pnpm`），或改用路径 A/B（npm/`dsh plugin add`） |
 | 技能目录没有 `ui-restore` | 组合里没有 skills service，或没重开会话 | 先重开会话；精简组合若没有 `@deepseek-ai/dsh-skill`，把 `skills/ui-restore/SKILL.md` 放进项目 `.dsh/skills` 手工兜底 |
-| 预设列表没有三个预设 | patch 没生效 / 被更高优先级层覆盖 | 用 `plugin_manager` 查看该 bundle 行的 `fiberPhase`，确认没有被 override；重装 bundle |
+| 预设列表不全 | patch 没生效 / 被更高优先级层覆盖 | 用 `plugin_manager` 查看该 bundle 行的 `fiberPhase`，确认没有被 override；重装 bundle |
 | 工具在，但队长预设里没有 subagent | 当前组合没有 `spawn` 提供方 | 换用带 subagent 的基线/Web 组合，或直接用默认预设按 SKILL 串行跑 |

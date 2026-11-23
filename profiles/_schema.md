@@ -43,6 +43,13 @@
     "path": "design/list.png",
     "note": "自由备注"
   },
+  "api": {
+    "source": "project",
+    "env": "test",
+    "enabled": true,
+    "allow": ["http://127.0.0.1:8080"],
+    "authEnv": "APP_TOKEN"
+  },
   "knownIssues": ["低分辨率下分页器换行（产品已确认，不记缺陷）"],
   "notes": "自由文本"
 }
@@ -71,6 +78,11 @@
 | `designSource.artboard` | string | — | 画板名，仅文字引用 |
 | `designSource.path` | string | — | 设计图或 ui-spec 的相对路径，仅文字引用 |
 | `designSource.note` | string | — | 自由备注 |
+| `api.source` | enum | `"none"` | `none` / `project` / `openapi` / `capture`；非法值告警并退回 `none` |
+| `api.env` | enum | `"test"` | `test` / `prod-readonly`；`prod-readonly` 时接线者只允许 GET |
+| `api.enabled` | boolean | `false` | 是否允许接线者访问真实接口；默认关，避免误连生产 |
+| `api.allow` | string[] | `[]` | 允许访问的 host / path 前缀白名单（如 `http://127.0.0.1:8080`） |
+| `api.authEnv` | string | `""` | 凭据所在的环境变量名；**只写名字，不写值** |
 | `knownIssues` | string[] | `[]` | 产品确认过、不计入缺陷的项；不要自己加 |
 | `notes` | string | `""` | 自由文本，进报告 |
 
@@ -79,6 +91,7 @@
 - 未知顶层字段：只**告警**（写进工具返回的警告里），不报错——方便先试后改。
 - 类型不对的子对象（如 `tokens` 写成数组）：告警并按默认值处理。
 - `designSource.kind` 写错：**直接报错**并列出允许值——设计源决定验收形态，不能猜。
+- `api.source` / `api.env` 写错：只**告警**并退回安全缺省（`none` / `test`）；`api.allow` 非数组时告警并忽略。
 - 数值兜底：非正数、非数字的宽高/DPR/合格线会退回默认值。
 - `knownIssues` 支持字符串数组；对象元素会尝试取 `text` / `issue` / `id`。
 - 档案解析结果会写进 run 的 `meta.json` 与报告「夹具声明」，便于复核当时用的是哪份档案。
@@ -93,6 +106,9 @@
   不要写成 `required: true`。
 - **基准页**：三同原则——同类型 → 同宽度 → 同数据量。不同数据量的页面不能互比。
 - **knownIssues**：只写产品确认过的。写进去等于放行，别拿来凑合格。
+- **api 段**：只填真实存在的来源与环境。`enabled` 默认关；打开前先确认测试环境、登录方式和
+  凭据环境变量，`allow` 尽量收窄到具体 host。生产只允许 `prod-readonly`（接线者只发 GET）。
+  接口找不到就让它 `blocked`，不要用 mock 冒充已接。
 
 ## 5. 内置示例
 

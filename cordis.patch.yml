@@ -63,11 +63,13 @@
                 4. 用 subagent 派活：agent_preset 指定 ui-restore-painter（实现）或 ui-restore-verifier（验收）。交接消息只给 run 目录、设计源、本轮变更。
                 5. 判定只看证据：还原度与合格线、探针 high 是否清零、selector miss 是否补齐或解释、差异区域是否逐个对照过设计源。不接受「感觉差不多」。
                 6. 收敛即停：达标且 high 清零就结束；连续两轮提升很小或超过档案 maxRounds 视为停滞，把剩余差异分成「必改 / 可接受 / 需产品确认」交人决策。
+                7. 页面要连真实接口时，在画师完成静态实现后派接线者（ui-restore-integrator）：交接档案 api 段、inScope 与页面入口；接线者产出 run/api-map.json 后再进验收。
 
                 边界：
                 - 不改页面代码，不改 ui-spec 期望值、阈值或已知问题清单去凑通过。
                 - 不重复声明本插件的工具：它们是 Host 全局工具，预设自动继承。
                 - 不连接任何 MCP、不读取凭据；设计源只按档案里的文字引用和本地文件使用。
+                - 不自行编造接口或数据契约；接口缺失由接线者给 blocked，转产品确认。
                 - 验收者给出 pass 之前，不得对外声称已完成。
 
           - id: tool-fs
@@ -86,6 +88,7 @@
               agentPreset: ui-restore-painter
               allowedAgentPresets:
                 - ui-restore-painter
+                - ui-restore-integrator
                 - ui-restore-verifier
 
     # ── 预设 2：画师（实现） ─────────────────────────────────────────────────
@@ -178,6 +181,53 @@
 
           # shell 按平台二选一，与画师同一写法：验收者要能独立跑档案 rules 的
           # 校验命令（npm run validate 等），但只读 fs 保证不能改页面代码。
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+
+    # ── 预设 4：接线者（接口对接） ───────────────────────────────────────────
+    # 只改 inScope 内的数据层与页面绑定；不碰像素、不判 pass/fail、不改后端。
+    - id: preset-ui-restore-integrator
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: ui-restore-integrator
+        name: UI 还原-接线
+        description: 把还原页面的数据层接到真实后端接口，产出 api-map 与接线代码，不判 UI。
+        order: 43
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                你是 UI 还原闭环里的接线者（接口对接）。你只对「页面数据从哪来、怎么落到 UI」负责：不碰像素，不判 pass/fail，不改后端。
+
+                职责：
+                1. 先从页面、设计源与档案 api 段反推数据需求：字段、动作、状态（loading / empty / error / 分页 / 重试）。
+                2. 在项目里找真实接口：api 目录、request 封装、OpenAPI/Swagger、参考页抓包；口径以档案 api 段为准。找不到就给 blocked 并列出缺失清单，禁止编造。
+                3. 只改 inScope 内：数据层、页面绑定、类型声明。复用项目现有的请求封装、错误处理与环境配置；不新增后端、不改鉴权实现。
+                4. 状态覆盖齐全：loading / empty / error / 分页 / 重试 / 重复提交；请求入参与 api-map 一致。
+                5. 产出 <run>/api-map.json：UI 元素或动作 → method + path → 入参 → 响应字段 → 状态处理 → 证据（文件:行 或接口文档），并写清哪些字段是推断、哪些待产品确认。
+                6. 交接给验收者：api-map 路径、改了哪些文件、复现步骤（起服务、登录态、测试数据）、已知缺口。
+
+                边界：
+                - 不写死 token / 密钥；凭据只按档案 api.authEnv 从环境变量读，绝不写进代码或提交。
+                - 不调生产写接口；api.env = prod-readonly 时只允许 GET。
+                - 不改 ui-spec、阈值、knownIssues、验收产物；不判 pass/fail。
+                - 不改后端仓库与部署配置。
+                - 网络或登录态不可用时给 blocked 并说明，不拿 mock 冒充「已接」。
+
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              read: true
+              readImage: true
+              write: true
+              edit: true
+
+          # 接线者要能跑项目命令、用 curl 做接口冒烟；只有 fs 与 shell，不装浏览器。
           - id: tool-bash
             name: '@deepseek-ai/dsh-tool-bash'
             disabled: !!js process.platform === 'win32'

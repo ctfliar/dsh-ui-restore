@@ -44,6 +44,13 @@ node scripts/selftest.mjs
     "artboard": "订单列表 / 桌面档",
     "note": "从 Paper 直读生成 ui-spec；截图只做渲染兜底"
   },
+  "api": {
+    "source": "project",
+    "env": "test",
+    "enabled": true,
+    "allow": ["http://127.0.0.1:8080"],
+    "authEnv": "ORDERS_TEST_TOKEN"
+  },
   "knownIssues": ["窄屏下分页器换行（产品已确认，不记缺陷）"],
   "notes": "dev server：npm run dev；页面地址：/orders"
 }
@@ -53,8 +60,11 @@ node scripts/selftest.mjs
 
 - `devices[0]` 是截图/探针的缺省视口；移动端页面把手机档放第一位。
 - `thresholds.score` 是还原度合格线；`ui_diff` 的默认允许差异率 = `1 - score`。
-- `rules[].required = true` 的命令由画师/验收者在各自会话里跑；规则不过不进截图环节。
+- `rules[].required = true` 的命令由画师/接线者/验收者在各自会话里跑；规则不过不进截图环节。
 - `designSource.kind` 只能是 `none` / `image` / `mcp`；非法值直接报错。
+- `api` 是交给接线者与验收者的接线约定：`source` 取 `project` / `openapi` / `capture` / `none`，
+  `env` 取 `test` / `prod-readonly`，`allow` 是允许访问的 host/path 前缀，`authEnv` 只写环境变量名。
+  插件不联网、不读凭据；只做视觉还原时留默认值即可。
 - 未知字段只告警、不报错，方便先跑通再补。
 
 ## 3. 四种设计源
@@ -115,6 +125,18 @@ node scripts/selftest.mjs
 | 6 | 验收者 | `ui_report` 生成报告 | `<run>/report.md` + `report.html` |
 
 同一页面的所有轮次复用**同一个 run 目录**，分数历史会自动累积。
+
+页面要连真实接口时，视觉收敛后再加一个接线阶段：
+
+| 步骤 | 谁 | 动作 | 产物 |
+| --- | --- | --- | --- |
+| A1 | 队长 | 交接档案 `api` 段、页面入口、inScope、测试环境与登录方式 | 交接消息 |
+| A2 | 接线者 | 反推数据需求 → 找真实接口 → 在 inScope 内实现数据层与状态 | 代码 + `<run>/api-map.json` |
+| A3 | 接线者 | 接口缺失 / 无测试环境 / 登录态不可用 → `blocked` 并列缺失清单 | blocked 说明 |
+| A4 | 验收者 | 按「接口层」门槛判定；接线改了布局就回 Step 1 重截 | verdict |
+
+接口层门槛：`api-map.json` 存在、页面没有 mock 假数据冒充、loading/empty/error/分页/重试覆盖、
+请求入参与 api-map 一致；`api.env = prod-readonly` 时只允许 GET。
 
 ## 5. 阈值与轮次
 

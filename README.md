@@ -15,7 +15,7 @@
 | 像素差异 | `ui_diff` | 等比对齐到设计画布后逐像素比较；score、差异率、连通域、热力图、左右对照；纯 Node 无 native 依赖 |
 | 样式探针 | `ui_probe` | 契约模式逐属性对比 `getComputedStyle`（`expected/actual/delta/severity`）；审计模式查溢出/硬编码色/字号间距/缺 alt/焦点/空态 |
 | 验收报告 | `ui_report` | Markdown + 单文件 HTML（无 JS、无外链、可打印），含三图、差异表、属性表、修复清单、夹具声明 |
-| 编排 | 3 个 Agent 预设 | 队长（编排）/ 画师（实现）/ 验收者（只读 + shell 跑 rules 门禁） |
+| 编排 | 4 个 Agent 预设 | 队长（编排）/ 画师（实现）/ 接线者（接真实接口）/ 验收者（只读 + shell 跑 rules 门禁） |
 | 方法 | SKILL 自动注册 | 安装后新会话的 skill 目录直接出现 `ui-restore` |
 
 ## 安装
@@ -33,9 +33,10 @@ plugin_manager { "action": "install_bundle", "target": "<包目录绝对路径>"
 ## 快速开始
 
 1. 新会话预设选 **「UI 还原-队长」**（`ui-restore`）；
-2. 在项目里写档案 `ui-restore-profiles/<id>.json`（设备档 / 合格线 / 规则命令 / 设计源 / 基准页）；
-3. 告诉队长要还原的页面、档案 id、允许改动的目录，按闭环推进；
-4. 验收者产出 `<run>/report.html`，按报告判定。
+2. 在项目里写档案 `ui-restore-profiles/<id>.json`（设备档 / 合格线 / 规则命令 / 设计源 / 基准页；
+   要接真实接口时补 `api` 段：来源、环境、允许的 host、凭据环境变量名）；
+3. 告诉队长要还原的页面、档案 id、允许改动的目录；有接口需求时说明测试环境与登录方式；
+4. 验收者产出 `<run>/report.html`，按报告判定；有接口任务时 `run/api-map.json` 一并交付。
 
 完整示例、四种设计源用法、一轮闭环动作序列与阈值说明见 **[docs/USAGE.md](docs/USAGE.md)**。
 
@@ -47,15 +48,17 @@ plugin_manager { "action": "install_bundle", "target": "<包目录绝对路径>"
 只是不注册技能，四个工具照常挂载。验证：`node scripts/selftest.mjs` 的「技能自动注册」三条
 用例；或在 DSH 会话里查看 skill catalog 是否出现 `ui-restore`。
 
-## 三个预设
+## 四个预设
 
 | 预设 | order | 挂载 | 职责 |
 | --- | --- | --- | --- |
 | `ui-restore`（队长） | 40 | persona + `tool-fs` + `tool-subagent` | 建档案、探能力、派活、收敛判定、交付报告 |
 | `ui-restore-painter`（画师） | 41 | persona + `tool-fs`（读写） + shell | 在 inScope 内实现页面、跑 rules、自看截图、声明 selector 映射 |
 | `ui-restore-verifier`（验收） | 42 | persona + `tool-fs`（只读） + shell | 跑 rules 门禁（只跑不改）、截图、探针、差异、判定、报告 |
+| `ui-restore-integrator`（接线） | 43 | persona + `tool-fs`（读写） + shell | 把页面数据层接到真实接口、产出 `api-map.json`、覆盖 loading/empty/error/分页/重试 |
 
 验收者 fs 保持只读（`write`/`edit`/`applyPatch` 全关）；shell 只用于跑 rules 命令。
+接线者只有 fs（读写）+ shell，不装浏览器，不判 UI。
 预设只引用 DSH 基线包，四个 `ui_*` 工具是 Host 行、预设不重复声明。详见
 [docs/USAGE.md](docs/USAGE.md) 与 `cordis.patch.yml`。
 
@@ -100,7 +103,7 @@ node scripts/paper-to-ui-spec.mjs --file <fileId> --artboard <nodeId> --dry-run 
 ```
 dsh-ui-restore/
   package.json            bundle 元数据（dsh.bundle.patch / exports / engines / release scripts）
-  cordis.patch.yml        Host 行 + 队长/画师/验收三个预设
+  cordis.patch.yml        Host 行 + 队长/画师/接线/验收四个预设
   lib/                    四个工具、PNG 差异、探针、ui-spec、档案、报告、技能注册
   schemas/                ui-spec JSON Schema
   profiles/               内置示例档案 + _schema.md

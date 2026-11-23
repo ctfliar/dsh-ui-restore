@@ -11,6 +11,7 @@
 | --- | --- | --- |
 | 项目档案 | 一次接入的夹具声明：设备档、合格线、规则、设计源、基准页、已知问题 | `<工作区>/<档案目录>/<id>.json`（默认 `ui-restore-profiles/<id>.json`） |
 | run 目录 | 一次还原验收的全部产物：截图、设计图、热力图、探针 JSON、报告 | `<runRoot>/<run>`（默认 `output/ui-restore/<run>`） |
+| api-map | 接线者产出的接口映射：UI 元素/动作 → method+path → 入参 → 响应字段 → 状态 | `<run>/api-map.json` |
 | ui-spec | 机器可读的样式契约：selector + 属性期望值 | 任意 JSON 文件，schema 见插件 `schemas/ui-spec.schema.json` |
 | 判定 | 有资格的结论：`pass` / `needs_revision` / `blocked` + findings | run 目录里的 `report.md` / `probe.json` / `diff.json` |
 
@@ -36,6 +37,9 @@
    - `tokens.files`：设计 token 来源文件（供人和模型查证，插件只做文字引用）。
    - `baseline.pages`：无设计源时用的「三同」基准页（同类型 → 同宽度 → 同数据量）。
    - `designSource.kind`：`none`（无设计源）/ `image`（设计图）/ `mcp`（外部设计工具产出的结构化文件）。
+   - `api`：页面要连真实接口时的接线约定——`source`（`project` / `openapi` / `capture` / `none`）、
+     `env`（`test` / `prod-readonly`）、`enabled`、`allow`（允许访问的 host/path 前缀）、`authEnv`
+     （凭据所在环境变量名）。只做视觉还原、不接后端时留默认值即可。
    - `knownIssues`：**产品确认过**、不计入缺陷的项。不要自己往里加。
 3. 有设计源：
    - 图像模式：把设计图导出成 PNG，白底、单画板、与 `devices[0]` 同比例，放到版本库能引用的位置。
@@ -57,6 +61,7 @@
 | 设计工具 MCP（结构化，含 Paper 直读） | 会话里能否调用 `get_basic_info` / `get_computed_styles` 等只读工具（见第 3A 节） | 生成 ui-spec，走契约模式 | 用设计图（图像模式） |
 | 设计图 | 档案 `designSource.kind = image` 且 PNG 可读 | `ui_diff` 像素比对 | 走无素材模式（第 8 节） |
 | 团队任务板 | 会话里是否出现团队/任务板相关工具 | 并行多页面、任务状态可审计 | 用基线的 subagent 串行闭环，产物仍然落 run 目录 |
+| 后端接口 | 项目里有没有 api 目录 / request 封装，OpenAPI 是否存在，参考页能否抓到请求 | 接线者把页面数据层接到真实接口 | 没有接口来源时接线者给 blocked，列缺失清单，不编造 |
 
 三种形态：
 
@@ -177,6 +182,36 @@
 `ui_report` 产出 `report.md`（引用结论）与 `report.html`（交付/留档）。
 `pass` 为 false 时，只退回 1~3 条最关键项，不要贴一屏。
 
+## 4A. 接口接线阶段（接线者，仅当页面要连真实接口）
+
+静态还原收敛后再接数据，避免数据变化干扰像素判定。顺序：
+
+1. 队长派接线者：交接档案 `api` 段、页面入口、inScope（页面数据层目录）、测试环境与登录方式。
+2. 接线者反推数据需求 → 找真实接口 → 在 inScope 内实现数据层与状态 → 产出 `<run>/api-map.json`。
+3. 接口缺失、没有测试环境、登录态不可用：接线者给 `blocked` 并列缺失清单，**不要用 mock 冒充已接**。
+4. 接线改动了布局时，回到 Step 1 重新截图；没改布局直接进验收。
+5. 验收者按第 5 节「接口层」判定，并跑档案 `rules` 里的契约命令（如有）。
+
+api-map 最小形状：
+
+```json
+{
+  "page": "/orders",
+  "env": "test",
+  "entries": [
+    {
+      "ui": "列表分页器 · 下一页",
+      "action": "click",
+      "request": { "method": "GET", "path": "/api/orders", "query": ["page", "size"] },
+      "response": { "list": "data.records", "total": "data.total" },
+      "states": ["loading", "empty", "error", "retry"],
+      "evidence": "src/api/order.js:42"
+    }
+  ],
+  "inferred": ["status 字段取值映射待产品确认"]
+}
+```
+
 ## 5. 判定口径（verdict 与 findings）
 
 判定是最容易放水的地方，按下面的硬门槛逐条过：
@@ -188,6 +223,7 @@
 | 选择器 | `selectorMisses` 清零；确属废弃锚点的，写明由谁、在哪一轮更新 |
 | 区域层 | `regions` 里 `high` 区域逐个对照设计源：是真差异，还是字体渲染/整体位移噪音 |
 | 规则层 | 档案里 `required: true` 的命令全部通过 |
+| 接口层 | 页面要连真实接口时：`<run>/api-map.json` 存在、页面没有 mock 假数据冒充、loading/empty/error/分页/重试覆盖、请求入参与 api-map 一致；`api.env = prod-readonly` 时只允许 GET |
 | 模式一致性 | 报告写清「本次模式 / 设计源」；无设计源时不得声称「与设计稿一致」 |
 
 `findings[]` 每条至少包含：
@@ -229,7 +265,7 @@
 
 ## 7. 角色提示词与边界
 
-三个角色对应插件的三个预设；没有预设时，也可以由一个人按顺序扮演，但**不要自己验自己**。
+四个角色对应插件的四个预设；没有预设时，也可以由一个人按顺序扮演，但**不要自己验自己**。
 
 ### 队长（编排）
 
@@ -248,6 +284,12 @@
 - 负责：跑档案 `rules` 命令做独立门禁（只跑不改）、截图、探针、差异、判定、报告。
 - 不负责：改代码、改 ui-spec、改阈值、把失败项标成「已知问题」。
 - 提示词要点：写清「没有证据不下结论」「不改任何项目文件」。
+
+### 接线者（接口对接）
+
+- 负责：inScope 内的数据层与页面绑定、`api-map.json`、loading/empty/error/分页/重试覆盖。
+- 不负责：像素、判定、后端实现、凭据落库；找不到接口就 blocked，不编造。
+- 提示词要点：写清「只按档案 api 段找接口」「凭据只从环境变量读」「生产只读」。 
 
 ### selector 映射由画师声明
 
@@ -282,6 +324,28 @@ run：<runRoot>/<页面>-r2
 
 「范围」必须写具体文件或目录：画师预设只带读写与 shell，不保证有文件搜索工具，
 靠猜路径会白跑一轮。
+
+派活（队长 → 接线者）：
+
+```text
+页面：<页面名 / 路由>
+档案：<档案 id>（api 段：source / env / allow / authEnv）
+run：<runRoot>/<页面>-r1
+inScope：<数据层与页面文件清单>
+接口来源：<api 目录 / OpenAPI 路径 / 抓包文件>
+测试环境：<baseUrl / 登录方式 / 测试账号来源>
+完成判据：api-map 生成、状态覆盖、契约命令通过（如有）
+```
+
+交回（接线者 → 验收者）：
+
+```text
+run：<runRoot>/<页面>-r1
+api-map：<run>/api-map.json
+本轮变更：<文件 1>（原因）、<文件 2>（原因）
+复现：<起服务 / 登录 / 测试数据>
+推断与缺口：<字段推断、待确认项、blocked 原因>
+```
 
 ## 8. 无素材模式（没有设计图、也没有结构化设计值）
 
@@ -358,4 +422,4 @@ verdict：pass / needs_revision / blocked
 
 ## 11. 一句话原则
 
-**画师对「实现」负责，验收者对「证据」负责；所有结论必须能落到 run 目录里的文件。**
+**画师对「实现」负责，接线者对「数据来源」负责，验收者对「证据」负责；所有结论必须能落到 run 目录里的文件。**
