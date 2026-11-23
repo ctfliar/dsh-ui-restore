@@ -1,0 +1,34 @@
+{
+  "id": "static-demo",
+  "label": "静态示例（无构建、无外网）",
+  "baseUrl": "",
+  "devices": [
+    { "id": "desktop", "width": 1440, "height": 900, "dpr": 1 },
+    { "id": "laptop", "width": 1280, "height": 800, "dpr": 1 },
+    { "id": "mobile", "width": 375, "height": 812, "dpr": 2 }
+  ],
+  "thresholds": { "score": 0.97, "maxRounds": 3 },
+  "rules": [
+    { "cwd": ".", "command": "node scripts/selftest.mjs", "required": false }
+  ],
+  "tokens": {
+    "files": ["examples/static-demo/index.html"],
+    "prefix": "--color-"
+  },
+  "baseline": {
+    "pages": [
+      "examples/static-demo/index.html",
+      "examples/static-demo/variant.html"
+    ]
+  },
+  "designSource": {
+    "kind": "image",
+    "artboard": "工单列表 / 1440×900",
+    "note": "examples/static-demo/index.html 的截图即设计基准；variant.html 用来验证差异定位"
+  },
+  "knownIssues": [
+    "纯静态夹具，没有真实数据接口与路由",
+    "字体依赖系统字体栈，不同机器字形宽度会有 1px 级差异"
+  ],
+  "notes": "供 README、skills 与 selftest 演示使用；可直接复制成新项目档案。"
+}

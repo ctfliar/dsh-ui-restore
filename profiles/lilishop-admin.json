@@ -1,0 +1,35 @@
+{
+  "id": "lilishop-admin",
+  "label": "商城 PC 管理后台（取值素材）",
+  "baseUrl": "",
+  "devices": [
+    { "id": "desktop", "width": 1440, "height": 900, "dpr": 1 },
+    { "id": "laptop", "width": 1280, "height": 800, "dpr": 1 }
+  ],
+  "thresholds": { "score": 0.95, "maxRounds": 3 },
+  "rules": [
+    { "cwd": "manager-v2", "command": "npm run validate", "required": true },
+    { "cwd": "brand-v2", "command": "npm run validate", "required": false }
+  ],
+  "tokens": {
+    "files": [
+      "manager-v2/src/styles/variables.css",
+      "manager-v2/uno.config.ts",
+      "manager-v2/src/App.vue"
+    ],
+    "prefix": "--"
+  },
+  "baseline": {
+    "pages": [
+      "manager-v2/src/views/member/list/index.vue",
+      "manager-v2/src/views/member/list/memberDetail.vue"
+    ]
+  },
+  "designSource": { "kind": "none" },
+  "knownIssues": [
+    "三份色板数值不一致（variables.css / uno.config.ts / App.vue），按页面实际取值，不互相比对",
+    "规范要求卡片圆角 ≤8px，实际 --radius-lg 为 10px，以现状为准，不单独记缺陷",
+    "1280 宽度下工具栏/分页器换行属已知表现，不按像素差异记缺陷"
+  ],
+  "notes": "取值来自仓库实测基线（2026-11 只读调研）；复制成自己的档案后按当前代码复核。baseUrl 留空：地址由使用者在调用时给完整 URL。"
+}

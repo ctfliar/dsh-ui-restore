@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "故意写错的 ui-spec（用于 selftest 校验非法字段）",
+  "unknownTopLevel": true,
+  "elements": [
+    {
+      "selector": ".btn-primary",
+      "properties": {
+        "widht": "34px",
+        "backgroundColor": "not-a-color",
+        "fontSize": "large"
+      }
+    },
+    {
+      "selector": "",
+      "properties": {}
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "name": "static-demo 列表页基线",
+  "viewport": { "width": 1440, "height": 900, "dpr": 1 },
+  "tolerance": { "length": 0.5, "number": 0.01, "color": 0 },
+  "notes": "用 examples/static-demo/index.html 校验；variant.html 用来验证差异定位。",
+  "elements": [
+    {
+      "selector": ".page-title",
+      "label": "页面标题",
+      "properties": {
+        "fontSize": "20px",
+        "fontWeight": 600,
+        "color": "#0f172a"
+      }
+    },
+    {
+      "selector": ".btn-primary",
+      "label": "主操作按钮",
+      "properties": {
+        "backgroundColor": "#2563eb",
+        "color": "#ffffff",
+        "fontSize": "14px",
+        "paddingLeft": 16,
+        "borderRadius": "6px",
+        "height": "34px"
+      }
+    },
+    {
+      "selector": ".card",
+      "label": "内容卡片",
+      "properties": {
+        "backgroundColor": "#ffffff",
+        "borderRadius": "8px",
+        "paddingTop": 16
+      }
+    },
+    {
+      "selector": ".sidebar",
+      "label": "侧栏",
+      "properties": {
+        "width": "200px",
+        "backgroundColor": "#0f172a"
+      }
+    },
+    {
+      "selector": ".data-table th",
+      "label": "表头单元格",
+      "properties": {
+        "fontSize": "13px",
+        "fontWeight": 600,
+        "color": "#475569"
+      }
+    },
+    {
+      "selector": ".stat-value",
+      "label": "统计数值",
+      "properties": {
+        "fontSize": "24px",
+        "fontWeight": 600
+      }
+    }
+  ]
+}

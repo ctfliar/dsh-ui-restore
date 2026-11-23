@@ -1,0 +1,21 @@
+{
+  "id": "example-static",
+  "label": "示例：静态页面（复制后按项目补齐）",
+  "baseUrl": "",
+  "devices": [
+    { "id": "desktop", "width": 1440, "height": 900, "dpr": 1 },
+    { "id": "mobile", "width": 375, "height": 812, "dpr": 2 }
+  ],
+  "thresholds": { "score": 0.97, "maxRounds": 3 },
+  "rules": [],
+  "tokens": { "files": [], "prefix": "--" },
+  "baseline": { "pages": [] },
+  "designSource": {
+    "kind": "image",
+    "artboard": "首页 / 桌面档",
+    "path": "design/home.png",
+    "note": "把设计图放进项目后改名；没有设计图时把 kind 改成 none"
+  },
+  "knownIssues": [],
+  "notes": "通用模板：rules（项目校验命令）、tokens.files（token 文件）、baseline.pages（三同基准页）按项目补齐。"
+}

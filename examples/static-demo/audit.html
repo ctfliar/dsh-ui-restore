@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>审计夹具 · 故意有问题</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px; background: #f6f8fb; color: #0f172a; font: 14px/1.6 "Microsoft YaHei", sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .panel { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; }
+  /* 缺陷 1：固定宽度导致横向溢出 */
+  .overflow-box { flex: 0 0 auto; width: 1600px; height: 40px; background: #fef2f2; border: 1px solid #fecaca; }
+  /* 缺陷 2：按钮没有可见焦点样式 */
+  .no-focus { outline: none; border: 1px solid #cbd5e1; background: #ffffff; border-radius: 6px; height: 32px; padding: 0 12px; }
+  /* 缺陷 3：字号过小，间距无刻度 */
+  .tiny { font-size: 9px; color: #94a3b8; margin: 3px 0 7px 5px; }
+  /* 缺陷 4：可疑空态：大块空白容器，没有文案 */
+  .empty-card { width: 320px; height: 180px; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px; }
+  .wide-table { border-collapse: collapse; width: 100%; }
+  .wide-table th, .wide-table td { padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+</style>
+</head>
+<body>
+  <h1>审计夹具</h1>
+
+  <div class="row">
+    <div class="panel" style="color: #ff0000;">
+      内联硬编码颜色（红色文字）
+    </div>
+    <div class="panel">
+      <img src="asset.svg" width="32" height="32" />
+      <span>上面的图片没有 alt</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="no-focus" type="button">无焦点按钮</button>
+    <button type="button">普通按钮</button>
+  </div>
+
+  <div class="row">
+    <div class="empty-card" aria-label="空白区域"></div>
+    <div class="panel" style="width: 360px;">
+      <div class="tiny">字号 9px、间距 3/7/5px 的说明文字</div>
+      <div class="tiny">第二行说明文字</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="overflow-box">这一行内容宽 1600px，会撑出横向滚动条</div>
+  </div>
+
+  <div class="row">
+    <div class="panel" style="width: 100%;">
+      <table class="wide-table">
+        <thead><tr><th>列 A</th><th>列 B</th></tr></thead>
+        <tbody><tr><td>一行数据</td><td>另一列</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

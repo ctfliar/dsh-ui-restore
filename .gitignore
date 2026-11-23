@@ -1,0 +1,10 @@
+node_modules/
+npm-debug.log*
+*.log
+.DS_Store
+Thumbs.db
+
+# Local runs and reports (tools default to output/ui-restore/<run>/)
+output/
+runs/
+*.tmp

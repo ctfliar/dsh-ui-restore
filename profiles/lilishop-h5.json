@@ -1,0 +1,35 @@
+{
+  "id": "lilishop-h5",
+  "label": "商城移动端 H5（取值素材）",
+  "baseUrl": "",
+  "devices": [
+    { "id": "mobile", "width": 375, "height": 812, "dpr": 2 },
+    { "id": "mobile-small", "width": 320, "height": 568, "dpr": 2 }
+  ],
+  "thresholds": { "score": 0.95, "maxRounds": 3 },
+  "rules": [
+    { "cwd": "hb-shop-h5", "command": "npm run test", "required": true },
+    { "cwd": "hb-shop-h5", "command": "npm run build:mp-weixin", "required": true }
+  ],
+  "tokens": {
+    "files": [
+      "hb-shop-h5/src/uni.scss",
+      "hb-shop-h5/uno.config.js"
+    ],
+    "prefix": "$"
+  },
+  "baseline": {
+    "pages": [
+      "hb-shop-h5/src/pages/coupons/couponsList.vue",
+      "hb-shop-h5/src/pages/order/allOrderList.vue"
+    ]
+  },
+  "designSource": { "kind": "none" },
+  "knownIssues": [
+    "没有 typecheck/validate；lint 会改写文件，不能当只读门禁",
+    "UnoCSS 任意值语法会让小程序样式整体失效，验收前先确认构建产物无转义选择器",
+    "声明了 i18n 依赖但源码未使用，不要求 i18n",
+    "H5 与小程序端 rpx 换算一致，但字重上限 600，超出按已知取舍处理"
+  ],
+  "notes": "取值来自仓库实测基线（2026-11 只读调研）；DPR 2 截图直接与 2x 设计稿比。baseUrl 留空：地址由使用者在调用时给完整 URL。"
+}

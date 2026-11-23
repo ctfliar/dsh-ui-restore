@@ -1,0 +1,60 @@
+{
+  "name": "dsh-ui-restore",
+  "version": "0.1.0",
+  "description": "UI restoration closed loop for DeepSeek Harness: screenshot capture, canvas-aligned pixel diff, computed-style probes, and a static acceptance report (Markdown + single-file HTML).",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./schemas/ui-spec.schema.json": "./schemas/ui-spec.schema.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "schemas",
+    "profiles",
+    "skills",
+    "docs",
+    "examples",
+    "scripts",
+    "locale",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "icon.svg"
+  ],
+  "engines": {
+    "node": ">=20.10.0",
+    "dsh": ">=0.2.2-rc.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "selftest": "node scripts/selftest.mjs",
+    "selftest:browser": "node scripts/selftest.mjs --browser",
+    "check": "node --check lib/index.js && node --check lib/browser.js && node --check lib/diff.js && node --check lib/probe.js && node --check lib/spec.js && node --check lib/profile.js && node --check lib/paths.js && node --check lib/report.js && node --check scripts/selftest.mjs"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "ui",
+    "visual-regression",
+    "playwright",
+    "acceptance",
+    "pixel-diff"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}
