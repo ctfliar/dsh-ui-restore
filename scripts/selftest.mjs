@@ -25,6 +25,19 @@ import { auditExpressionSource, buildAuditResult, buildSpecResult, runProbe } fr
 import { capturePage, launchBrowser, withPage } from '../lib/browser.js';
 import { ensureDir, mergeMeta, profileSummary, readMeta, writeJsonFile } from '../lib/paths.js';
 import { SKILL_FILE, readBundledSkill, registerBundledSkill } from '../lib/skill.js';
+import {
+  ENDPOINT_ENV,
+  buildUiSpec,
+  collectTreeNodes,
+  convert as convertPaper,
+  extractToolPayload,
+  filterStyles,
+  main as paperMain,
+  parseArgs as parsePaperArgs,
+  parseMcpBody,
+  resolveEndpoint,
+  toUiSpecPropertyName,
+} from '../scripts/paper-to-ui-spec.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -913,6 +926,278 @@ async function coreSuite() {
     assert(captured.skill?.content.includes('# SKILL'), '注册正文应来自包内 SKILL.md');
   });
 
+  // ---- Paper 直读（离线夹具，不依赖网络） --------------------------------
+
+  // 真实 Paper 的 tools/call 返回两段 text block：block0 是上下文头，block1 才是业务载荷。
+  const PAPER_CONTEXT_HEADER = {
+    file: { id: 'file_sample', name: 'Marketing Home' },
+    contentHash: { tokens: 'sha256:paper-context' },
+  };
+  const paperToolResult = (payloads) => ({
+    content: [
+      { type: 'text', text: JSON.stringify(PAPER_CONTEXT_HEADER) },
+      ...(Array.isArray(payloads) ? payloads : [payloads]).map((payload) => ({ type: 'text', text: JSON.stringify(payload) })),
+    ],
+  });
+
+  // 真实 Paper 形状：get_tree_summary 只有字符串 summary；层级靠 get_children 逐层取。
+  const PAPER_CHILDREN = {
+    artboard_home: [
+      { id: 'n-hero', name: 'Hero', component: 'frame' },
+      { id: 'n-cta', name: 'Primary CTA', component: 'button' },
+      { id: 'n-card', name: 'Feature card', component: 'frame' },
+    ],
+    'n-hero': [
+      { id: 'n-hero-title', name: 'Hero title', component: 'text' },
+      { id: 'n-hero-sub', name: 'Hero subtitle', component: 'text' },
+    ],
+    'n-cta': [],
+    'n-card': [],
+  };
+  const makePaperClient = (fixture) => {
+    const calls = [];
+    const styleBatches = [];
+    return {
+      calls,
+      styleBatches,
+      async callTool(name, args = {}) {
+        calls.push({ name, args });
+        if (name === 'get_basic_info') return extractToolPayload(paperToolResult({ fileName: fixture.file.name, artboards: fixture.artboards }), name);
+        if (name === 'get_tokens') return extractToolPayload(paperToolResult({ tokens: fixture.tokens }), name);
+        if (name === 'get_tree_summary') {
+          return extractToolPayload(paperToolResult({ summary: `Frame "${fixture.artboards[0].name}" (${fixture.artboards[0].id}) ${fixture.artboards[0].width}×${fixture.artboards[0].height}\n  Frame Hero ...` }), name);
+        }
+        if (name === 'get_children') return extractToolPayload(paperToolResult({ children: PAPER_CHILDREN[args.nodeId] ?? [] }), name);
+        if (name === 'get_computed_styles') {
+          styleBatches.push([...args.nodeIds]);
+          const styles = {};
+          for (const nodeId of args.nodeIds) {
+            const entry = fixture.computedStyles.find((item) => item.nodeId === nodeId);
+            if (entry) styles[nodeId] = entry.styles;
+          }
+          return extractToolPayload(paperToolResult({ styles }), name);
+        }
+        throw new Error(`unexpected tool ${name}`);
+      },
+    };
+  };
+
+  await test('Paper 多 content block：按业务键选载荷（上下文头 + 业务块）', () => {
+    const basic = extractToolPayload(paperToolResult({ fileName: 'Marketing Home', artboards: [{ id: 'a1', name: 'Artboard', width: 100, height: 50 }] }), 'get_basic_info');
+    assertEqual(basic.artboards[0].id, 'a1', 'get_basic_info 应选含 artboards 的块');
+    const tokens = extractToolPayload(paperToolResult({ tokens: [{ name: 'brand' }] }), 'get_tokens');
+    assertEqual(tokens.tokens[0].name, 'brand', 'get_tokens 应选 tokens 块');
+    const summary = extractToolPayload(paperToolResult({ summary: { nodes: [{ id: 'n1' }] } }), 'get_tree_summary');
+    assertEqual(summary.summary.nodes[0].id, 'n1', 'get_tree_summary 应选 summary 块');
+    const children = extractToolPayload(paperToolResult({ children: [{ id: 'c1' }] }), 'get_children');
+    assertEqual(children.children[0].id, 'c1', 'get_children 应选 children 块');
+    const styles = extractToolPayload(paperToolResult({ styles: { n1: { 'font-size': '12px' } } }), 'get_computed_styles');
+    assertEqual(styles.styles.n1['font-size'], '12px', 'get_computed_styles 应选 styles 块');
+
+    let headerOnly;
+    try {
+      extractToolPayload(paperToolResult([]), 'get_basic_info');
+    } catch (error) {
+      headerOnly = error;
+    }
+    assert(headerOnly && headerOnly.message.includes('返回里没有 artboards'), '只有上下文头时应报「返回里没有 artboards」');
+
+    const warnings = [];
+    const merged = extractToolPayload(paperToolResult([{ artboards: [{ id: 'a1' }] }, { fileName: 'Marketing Home' }]), 'get_basic_info', warnings);
+    assertEqual(merged.artboards[0].id, 'a1', '多业务块应浅合并保留 artboards');
+    assertEqual(merged.fileName, 'Marketing Home', '多业务块应浅合并保留 fileName');
+    assertEqual(warnings.length, 1, '多业务块应写 warning');
+  });
+
+  await test('Paper 直读：JSON-RPC/SSE 解析、工具载荷解包与属性映射', () => {
+    const sse = 'event: message\ndata: {"jsonrpc":"2.0","id":1,"result":{"ok":true}}\n\n';
+    const parsed = parseMcpBody(sse, 'text/event-stream');
+    assertEqual(parsed.result.ok, true, 'SSE data 行应解析成 JSON-RPC 结果');
+    const direct = parseMcpBody('{"jsonrpc":"2.0","id":2,"result":{"value":1}}', 'application/json');
+    assertEqual(direct.result.value, 1, '普通 JSON 应直接解析');
+    const payload = extractToolPayload({ content: [{ type: 'text', text: JSON.stringify({ artboards: [{ id: 'a1', width: 100, height: 50 }] }) }] });
+    assertEqual(payload.artboards[0].id, 'a1', 'content[].text 应解包成 JSON');
+    assertEqual(toUiSpecPropertyName('font-size'), 'fontSize', 'kebab-case 应映射到 ui-spec 键');
+    assertEqual(toUiSpecPropertyName('not-a-property'), undefined, '白名单外属性应丢弃');
+    const styles = filterStyles({ 'font-size': '12px', 'line-height': 16, color: '#C72926', 'unknown-thing': 'x' });
+    assertEqual(JSON.stringify(styles), JSON.stringify({ fontSize: '12px', lineHeight: '16px', color: '#c72926' }), '样式应过滤并归一化');
+    const { nodes, truncated } = collectTreeNodes({ children: [{ id: 'a' }, { id: 'b', children: [{ id: 'c' }] }] }, 10);
+    assertEqual(JSON.stringify(nodes.map((node) => node.id)), JSON.stringify(['a', 'b', 'c']), '应按深度优先收集节点');
+    assertEqual(truncated, false, '未超限不应截断');
+  });
+
+  await test('Paper 直读：离线夹具（字符串 summary + get_children BFS）→ ui-spec 与 sample 一致', async () => {
+    const fixture = JSON.parse(readFileSync(join(ROOT, 'examples', 'paper', 'paper-artboard.sample.json'), 'utf8'));
+    const expected = JSON.parse(readFileSync(join(ROOT, 'examples', 'paper', 'ui-spec.sample.json'), 'utf8'));
+    const fakeClient = makePaperClient(fixture);
+    const result = await convertPaper({ client: fakeClient, fileId: 'file_sample', artboardId: 'artboard_home', maxNodes: 200, maxDepth: 3 });
+    assertEqual(JSON.stringify(result.spec), JSON.stringify(expected), '生成的 ui-spec 应与 sample 完全一致');
+    assertEqual(result.spec.elements.length, 4, '应有 4 个有样式的元素');
+    assertEqual(result.spec.viewport.width, 1440, 'viewport 宽应取 artboard');
+    assertEqual(result.warnings.length, 0, '未超限不应有 warning');
+    assertEqual(result.stats.childrenCalls, 6, 'BFS 应调用 6 次 get_children（根 + hero + 2 叶子 + 2 文本）');
+    assertEqual(result.stats.styleCalls, 1, '4 个节点应只调用 1 次 styles');
+    assert(!fakeClient.calls.some((call) => call.name === 'get_tree_summary'), '建 ui-spec 不应依赖 get_tree_summary');
+    assertEqual(fakeClient.calls.find((call) => call.name === 'get_children').args.fileId, 'file_sample', 'get_children 必须显式传 fileId');
+    assert(fakeClient.styleBatches.every((batch) => batch.length <= 50), '每批 styles ≤ 50 个 nodeIds');
+    validateSpec(result.spec);
+  });
+
+  await test('Paper 直读：超 max-nodes 截断并 warning；缺端点/artboard 报可读错误', async () => {
+    const fixture = JSON.parse(readFileSync(join(ROOT, 'examples', 'paper', 'paper-artboard.sample.json'), 'utf8'));
+    const fakeClient = makePaperClient(fixture);
+    const truncated = await convertPaper({ client: fakeClient, fileId: 'file_sample', artboardId: 'artboard_home', maxNodes: 4, maxDepth: 3 });
+    assertEqual(truncated.spec.elements.length, 2, 'max-nodes=4 时只采到根 + 三个子节点，其中 2 个有样式');
+    assertEqual(truncated.stats.truncated, true, 'max-nodes 截断应标记 truncated');
+    assert(truncated.warnings.some((warning) => warning.includes('max-nodes')), '截断应写 warning');
+
+    let missingEndpoint;
+    try {
+      resolveEndpoint({}, {});
+    } catch (error) {
+      missingEndpoint = error;
+    }
+    assert(missingEndpoint && missingEndpoint.message.includes(ENDPOINT_ENV), '缺端点错误应包含环境变量名');
+    assert(missingEndpoint.message.includes('--url http://<paper-host>:<port>/mcp'), '缺端点错误应给出示例值');
+    assertEqual(resolveEndpoint({ url: 'http://paper.example/mcp' }, {}), 'http://paper.example/mcp', '--url 优先');
+
+    let missingArtboard;
+    try {
+      await convertPaper({ client: fakeClient, fileId: 'file_sample', artboardId: 'nope', maxNodes: 10 });
+    } catch (error) {
+      missingArtboard = error;
+    }
+    assert(missingArtboard && missingArtboard.message.includes('artboard 不存在'), '不存在的 artboard 应报可读错误');
+    assert(missingArtboard.message.includes('可用 artboard') && missingArtboard.message.includes('artboard_home'), '错误里应列出可用 artboard');
+
+    const args = parsePaperArgs(['--file', 'f', '--artboard', 'a', '--dry-run']);
+    assertEqual(args.dryRun, true, '--dry-run 应被解析');
+    assertEqual(args.maxNodes, 200, '默认 max-nodes=200');
+    assertEqual(args.maxDepth, 3, '默认 max-depth=3');
+    assertEqual(parsePaperArgs(['--file', 'f', '--artboard', 'a', '--max-depth', '5']).maxDepth, 5, '--max-depth 应被解析');
+    assertEqual(typeof paperMain, 'function', 'CLI 入口应可调用');
+
+    const source = readFileSync(new URL('../scripts/paper-to-ui-spec.mjs', import.meta.url), 'utf8');
+    const forbidden = ['127' + '.0.0.1', '299' + '79', 'mcp' + '__paper'];
+    assert(!forbidden.some((needle) => source.includes(needle)), '脚本源码不应出现本机地址/端口/工具名');
+  });
+
+  await test('Paper 直读：get_computed_styles 每批 ≤ 50 并记录 calls 计数', async () => {
+    const children = Array.from({ length: 120 }, (_, index) => ({ id: `n${index}`, name: `Node ${index}`, component: 'text' }));
+    const batchSizes = [];
+    const fakeClient = {
+      async callTool(name, args = {}) {
+        if (name === 'get_basic_info') return { fileName: 'Batch Home', artboards: [{ id: 'root', name: 'Batch', width: 100, height: 100 }] };
+        if (name === 'get_tokens') return { tokens: [] };
+        if (name === 'get_children') return { children: args.nodeId === 'root' ? children : [] };
+        if (name === 'get_computed_styles') {
+          batchSizes.push(args.nodeIds.length);
+          const styles = {};
+          for (const nodeId of args.nodeIds) {
+            if (nodeId === 'root') continue;
+            styles[nodeId] = { 'font-size': '12px' };
+          }
+          return { styles };
+        }
+        throw new Error(`unexpected tool ${name}`);
+      },
+    };
+    const result = await convertPaper({ client: fakeClient, fileId: 'f', artboardId: 'root', maxNodes: 200, maxDepth: 1 });
+    assertEqual(result.spec.elements.length, 120, '120 个子节点都应生成元素');
+    assertEqual(result.stats.styleCalls, 3, '120 个节点应分 3 批（根节点也占一个 id）');
+    assertEqual(JSON.stringify(batchSizes), JSON.stringify([50, 50, 21]), '每批 ≤ 50 且按顺序切分');
+    assertEqual(result.stats.childrenCalls, 1, 'max-depth=1 只取根节点 children');
+    validateSpec(result.spec);
+  });
+
+  await test('Paper 直读：get_children 返回空报可读错误；单批 styles 失败只跳过该批', async () => {
+    const emptyClient = {
+      async callTool(name) {
+        if (name === 'get_basic_info') return { fileName: 'Empty', artboards: [{ id: 'root', name: 'Empty', width: 100, height: 100 }] };
+        if (name === 'get_tokens') return { tokens: [] };
+        if (name === 'get_children') return { children: [] };
+        throw new Error(`unexpected tool ${name}`);
+      },
+    };
+    let emptyError;
+    try {
+      await convertPaper({ client: emptyClient, fileId: 'f', artboardId: 'root', maxNodes: 10, maxDepth: 2 });
+    } catch (error) {
+      emptyError = error;
+    }
+    assert(emptyError && emptyError.message.includes('get_children 返回空'), '空 artboard 应报「get_children 返回空」');
+
+    const children = Array.from({ length: 60 }, (_, index) => ({ id: `n${index}`, name: `Node ${index}`, component: 'text' }));
+    let styleCall = 0;
+    const flakyClient = {
+      async callTool(name, args = {}) {
+        if (name === 'get_basic_info') return { fileName: 'Flaky', artboards: [{ id: 'root', name: 'Flaky', width: 100, height: 100 }] };
+        if (name === 'get_tokens') return { tokens: [] };
+        if (name === 'get_children') return { children: args.nodeId === 'root' ? children : [] };
+        if (name === 'get_computed_styles') {
+          styleCall += 1;
+          if (styleCall === 1) throw new Error('paper busy');
+          const styles = {};
+          for (const nodeId of args.nodeIds) styles[nodeId] = { 'font-size': '12px' };
+          return { styles };
+        }
+        throw new Error(`unexpected tool ${name}`);
+      },
+    };
+    const partial = await convertPaper({ client: flakyClient, fileId: 'f', artboardId: 'root', maxNodes: 100, maxDepth: 1 });
+    assertEqual(partial.stats.styleCalls, 2, '61 个节点应分 2 批');
+    assert(partial.warnings.some((warning) => warning.includes('第 1 批') && warning.includes('已跳过该批')), '首批失败应写 warning');
+    assertEqual(partial.spec.elements.length, 11, '第二批成功的 11 个节点仍应生成元素');
+  });
+
+  await test('Paper 值归一化：calc()/var()/auto/百分比跳过并计数，保留合法值', async () => {
+    const styles = {
+      left: 'calc(50% + 0px)',
+      width: 'var(--w)',
+      minWidth: '50%',
+      height: 'auto',
+      fontSize: '50%',
+      maxWidth: '10vh',
+      borderRadius: 'fit-content',
+      backgroundColor: 'var(--bg)',
+      borderColor: 'currentColor',
+      position: 'calc(1px + 2px)',
+      paddingTop: '12px',
+      display: 'flex',
+      color: '#C72926',
+      top: '0',
+      letterSpacing: '-0.02em',
+      outlineColor: 'rgb(1, 2, 3)',
+      unknownThing: 'x',
+    };
+    const fakeClient = {
+      async callTool(name, args = {}) {
+        if (name === 'get_basic_info') return { fileName: 'Normalize', artboards: [{ id: 'root', name: 'Normalize', width: 100, height: 100 }] };
+        if (name === 'get_tokens') return { tokens: [] };
+        if (name === 'get_children') return { children: args.nodeId === 'root' ? [{ id: 'n-bad', name: 'Bad styles', component: 'frame' }] : [] };
+        if (name === 'get_computed_styles') return { styles: { 'n-bad': styles } };
+        throw new Error(`unexpected tool ${name}`);
+      },
+    };
+    const result = await convertPaper({ client: fakeClient, fileId: 'f', artboardId: 'root', maxNodes: 10, maxDepth: 1 });
+    assertEqual(result.spec.elements.length, 1, '应生成 1 个元素');
+    assertEqual(JSON.stringify(result.spec.elements[0].properties), JSON.stringify({
+      paddingTop: '12px',
+      display: 'flex',
+      color: '#c72926',
+      top: '0px',
+      letterSpacing: '-0.02em',
+      outlineColor: 'rgb(1, 2, 3)',
+    }), '只保留可写进 ui-spec 的值');
+    assertEqual(result.stats.collected, 6, 'collected 计数');
+    assertEqual(result.stats.skipped, 10, 'skipped 计数');
+    assertEqual(result.stats.skippedByProp.left, 1, 'left 计入 skippedByProp');
+    assertEqual(result.stats.skippedByProp.position, 1, 'position 计入 skippedByProp');
+    assert(!('width' in result.spec.elements[0].properties), 'var(--w) 应被跳过');
+    assert(result.warnings.some((warning) => warning.includes('已跳过 10 个') && warning.includes('left×1')), 'warning 应汇总 skipped');
+    validateSpec(result.spec);
+  });
+
   await test('项目档案缺字段走默认值；未知档案与非法 designSource 报错', () => {
     const normalized = normalizeProfile({ id: 'sparse' });
     assertEqual(normalized.profile.devices.length, 1, '缺省设备档数量');
@@ -1114,6 +1399,10 @@ async function coreSuite() {
     assert(html.includes('颜色分布') && html.includes('rgb(15, 23, 42)'), '应展示颜色分布');
     assert(html.includes('overflow') && html.includes('button.no-focus'), '问题表应包含问题类型与选择器');
     assert(html.includes('审计模式'), '应说明当前为审计模式');
+    // T6-L1：审计运行必须显式声明「本次未做设计比对」，不能让人误以为比对过。
+    assert(html.includes('本次未做设计比对（审计运行）'), 'HTML 应显式声明审计运行未做设计比对');
+    const auditMd = readFileSync(report.markdownPath, 'utf8');
+    assert(auditMd.includes('本次未做设计比对（审计运行）'), 'Markdown 也应显式声明审计运行未做设计比对');
     assertEqual(report.summary.issues.total, 5, '报告摘要应带问题总数');
     assertEqual(report.summary.mode, 'none', '无设计稿模式');
   });

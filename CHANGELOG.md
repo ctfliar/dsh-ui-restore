@@ -5,6 +5,75 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-23
+
+### Added
+
+- **Paper 直读主流程（设计源 A）**：`skills/ui-restore/SKILL.md` 新增第 3A 节，把
+  `get_basic_info → get_tokens → get_tree_summary → get_computed_styles → ui-spec → ui_probe(expected)`
+  写成可执行步骤与字段映射；明确 `get_tokens` 可能为空、所有 `get_*` 必须显式传 `fileId`、
+  写类工具禁用；截图只用于字体回退/图片裁切/阴影/溢出/遮挡等渲染兜底，有 Paper 时不再用设计图模式。
+- **`docs/paper-mcp.md`**：在 DSH 里挂 Paper MCP 的两种方法（配置-only bundle / Plugins 设置）、
+  只读工具清单与必填参数、只读禁令、常见错误（Paper 未启动、会话过期、漏传 `fileId`、漏调 `get_guide`）。
+- **`scripts/paper-to-ui-spec.mjs`**：零依赖 CLI，用 node 内置 fetch 走 JSON-RPC over HTTP
+  （initialize → notifications/initialized → tools/call），解析 SSE `data:` 行；
+  `--url` / `PAPER_MCP_URL` 取端点（源码不写死地址），支持 `--max-nodes` 截断 warning 与
+  `--dry-run`，输出经 `schemas/ui-spec.schema.json` 校验。附 `examples/paper/`
+  脱敏样本与不依赖网络的 selftest 单测。
+- **安装与使用文档**：新增 `docs/INSTALL.md`（前置条件、三条安装路径、安装后自检、升级卸载、故障排查）
+  与 `docs/USAGE.md`（快速开始、完整档案示例、四种设计源、一轮闭环动作序列、阈值与轮次、报告阅读、FAQ）。
+- **技能自动注册**：插件自带的 `skills/ui-restore/SKILL.md` 现在由 `lib/skill.js`
+  通过 `ctx.skills.register()` 注册成 runtime skill（rank 250）。安装后新会话的 skill
+  目录即可发现 `ui-restore`，不需要用户手工拷贝到 `.dsh/skills` 或 `customSkillDirs`。
+  技能目录由 `import.meta.url` 推导，源码不出现本机绝对路径；注册走
+  `ctx.inject(['skills'])` 可选依赖，缺 skills service 的精简组合只是不注册技能，
+  不影响四个工具挂载。
+- **发布工具**：新增 `scripts/release.mjs` 与 npm scripts `release:dry` / `release:patch` /
+  `release:minor`。默认 dry-run 打印工作区状态、当前/目标版本、npm 登录态与将执行的
+  `npm version` / `npm publish --tag`；只有 `--apply` 才执行。脏工作区、目标版本未变、
+  `engines.dsh` 与当前运行时冲突、npm 未登录都会拒绝并说明；不 push 任何 git 远端。
+
+### Changed
+
+- **README 改为落地页**：一段话定位 + 能力表 + 文档导航（INSTALL / USAGE / paper-mcp /
+  design-sources），保留兼容性表（含 engines 维护规则）与发布约定；细节拆到 `docs/`。
+- **验收者获得 shell**：`ui-restore-verifier` 预设按平台二选一挂 `tool-bash` /
+  `tool-pwsh`（`disabled: !!js process.platform === 'win32'` / `!== 'win32'`，与画师同一写法），
+  fs 仍保持只读（`read`/`readImage` true，`write`/`edit`/`applyPatch` false）。
+  persona 增加「跑档案 rules 命令但只跑不改」的职责：规则不过判 `needs_revision`，
+  并在 findings 里给命令输出摘要（命令、退出码、关键报错或首尾行）。
+- **engines 策略放宽**：`engines.dsh` 改为 `>=0.2.2-rc.5 || >=0.3.0-rc.1`。
+  README 写明维护规则：只有新的 DSH minor 预发布经过实测，才在范围里追加对应 clause；
+  不使用 `*`。因此 `0.4.0-rc.1` 等未实测的新 minor 预发布默认不满足；需要时先实测再追加 clause。
+
+### Fixed
+
+- **B8（Paper computed styles 归一化）**：Paper 的 computed styles 含 `calc()`、`var()`、
+  `auto`、百分比等表达式，会让生成的 ui-spec 过不了 schema。`paper-to-ui-spec.mjs` 现在按
+  属性类型归一化：长度只接受有限数字或 `px`/`rem`/`em`；颜色只接受 `#hex` / `rgb()` /
+  `hsl()`；枚举/关键字保留字符串但跳过含 `calc()`/`var()` 的值；其它属性原样保留。
+  跳过的值计入 `stats.skipped` / `skippedByProp` 并汇总成一条 warning，不再整体失败；
+  CLI 末尾打印一行 `nodes/elements/childrenCalls/styleCalls/collected/skipped/truncated` 摘要。
+  selftest 增加 calc/var/auto/百分比夹具；文档补充「哪些值会被跳过」。
+- **B7（Paper 主路径）**：真实 Paper 0.5.19 的 `get_tree_summary` 只返回文本树
+  （`{"summary": "Frame ..."}`），不再用它建 ui-spec。`scripts/paper-to-ui-spec.mjs` 改为
+  `get_children` 从 artboard 逐层 BFS 采集节点（`--max-depth` 默认 3、`--max-nodes` 默认 200，
+  记录 id/name/component/childCount/depth/parentId），`get_computed_styles` 按批调用
+  （每批 ≤ 50 个 nodeIds，单批失败跳过并 warning），结果记录 `childrenCalls` / `styleCalls`；
+  `get_tree_summary` 仅在带端点的 `--dry-run` 里打印概览。selftest 夹具改为真实形状
+  （字符串 summary + 两层 get_children + 分批 styles），sample 元素顺序随 BFS 更新（内容不变）。
+- **B6（Paper 多 content block 解析）**：真实 Paper 的 `tools/call` 返回两段 text block
+  （block0 上下文头 `{file, contentHash}`，block1 业务载荷）。`scripts/paper-to-ui-spec.mjs`
+  不再只取第一个块：解析所有 text block、跳过上下文头，按工具业务键选块
+  （`get_basic_info`→artboards/fileName、`get_tokens`→tokens、`get_tree_summary`→summary、
+  `get_children`→children、`get_computed_styles`→styles）；多业务块浅合并并写 warning；
+  只有上下文头时报可读错误「返回里没有 artboards」，不再静默空结果。`--dry-run` 带端点时
+  做只读探测并列出 artboards。selftest 夹具改为真实两段式并新增该回归用例。
+- **T21-F1（文档 fileId 表述）**：`docs/paper-mcp.md` 与 `docs/USAGE.md` 改为
+  「除 `get_basic_info` 外，其余 `get_*` 必须显式传 `fileId`」，与工具表/SKILL/脚本一致。
+- **T6-L1**：审计运行（`ui_probe` 不带 `expected`）的报告在 HTML 与 Markdown 里显式写
+  「本次未做设计比对（审计运行）」，避免读者误以为做过设计稿比对；selftest 增加 HTML/MD 断言。
+
 ## [0.1.1] - 2026-11-23
 
 ### Added

@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "name": "Paper: Marketing Home / Home - Desktop",
+  "viewport": {
+    "width": 1440,
+    "height": 1200,
+    "dpr": 1
+  },
+  "notes": "由 Paper MCP 直读生成：get_basic_info → get_tokens → get_children（BFS）→ get_computed_styles（分批）。 Paper node.id 与页面 selector 的映射由画师声明并写进交接；当前 selector 是 [data-node-id=\"…\"] 占位。 该设计稿没有 token（get_tokens 返回空），本契约只写元素级 computed styles。",
+  "elements": [
+    {
+      "selector": "[data-node-id=\"n-cta\"]",
+      "label": "Primary CTA",
+      "note": "Paper node n-cta（Primary CTA）；selector 由画师按页面结构映射后替换。",
+      "properties": {
+        "backgroundColor": "#c72926",
+        "borderRadius": "999px",
+        "height": "48px",
+        "paddingLeft": "24px",
+        "paddingRight": "24px",
+        "fontSize": "14px",
+        "color": "#ffffff",
+        "fontWeight": 700
+      }
+    },
+    {
+      "selector": "[data-node-id=\"n-card\"]",
+      "label": "Feature card",
+      "note": "Paper node n-card（Feature card）；selector 由画师按页面结构映射后替换。",
+      "properties": {
+        "backgroundColor": "#ffffff",
+        "borderRadius": "12px",
+        "paddingTop": "24px",
+        "paddingLeft": "24px",
+        "paddingRight": "24px",
+        "width": "368px",
+        "height": "240px",
+        "boxShadow": "0 8px 24px rgba(0, 0, 0, 0.12)"
+      }
+    },
+    {
+      "selector": "[data-node-id=\"n-hero-title\"]",
+      "label": "Hero title",
+      "note": "Paper node n-hero-title（Hero title）；selector 由画师按页面结构映射后替换。",
+      "properties": {
+        "fontSize": "48px",
+        "lineHeight": "56px",
+        "letterSpacing": "-0.02em",
+        "color": "#111827",
+        "fontWeight": 700
+      }
+    },
+    {
+      "selector": "[data-node-id=\"n-hero-sub\"]",
+      "label": "Hero subtitle",
+      "note": "Paper node n-hero-sub（Hero subtitle）；selector 由画师按页面结构映射后替换。",
+      "properties": {
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "color": "#666666",
+        "fontWeight": 400
+      }
+    }
+  ]
+}

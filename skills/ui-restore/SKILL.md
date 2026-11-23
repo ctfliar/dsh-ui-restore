@@ -54,19 +54,65 @@
 | 本插件四个工具 | 工具列表里能看到 `ui_capture` / `ui_diff` / `ui_probe` / `ui_report` | 整个闭环 | 装好插件再开工；这是唯一硬依赖 |
 | 浏览器 | 用 `ui_capture` 截一张最小页面，看是否返回 PNG 路径 | 截图与探针 | 换系统 Chrome/Edge，或给插件配置 `executablePath`；沙箱禁起进程时改到非受限会话 |
 | 项目校验命令 | 档案 `rules` 里是否有 `required: true` 的项，命令能否跑通 | 规则门禁（第 0 层） | 没有机械门禁就在报告里写明「本项目无机械门禁」，不要假装跑过 |
-| 设计工具 MCP（结构化） | 有没有能导出「元素 + 计算样式」的 MCP 产物 | 生成 ui-spec，走契约模式 | 用设计图（图像模式） |
+| 设计工具 MCP（结构化，含 Paper 直读） | 会话里能否调用 `get_basic_info` / `get_computed_styles` 等只读工具（见第 3A 节） | 生成 ui-spec，走契约模式 | 用设计图（图像模式） |
 | 设计图 | 档案 `designSource.kind = image` 且 PNG 可读 | `ui_diff` 像素比对 | 走无素材模式（第 8 节） |
 | 团队任务板 | 会话里是否出现团队/任务板相关工具 | 并行多页面、任务状态可审计 | 用基线的 subagent 串行闭环，产物仍然落 run 目录 |
 
 三种形态：
 
-1. **结构化模式**（有设计工具产物 / 有手写 ui-spec）：`ui_probe` 契约模式是主判据，
-   `ui_diff` 只在同时有设计图时补充。
+1. **结构化模式**（Paper 直读 / 有设计工具产物 / 有手写 ui-spec）：`ui_probe` 契约模式是主判据，
+   `ui_diff` 只在同时有设计图时补充。Paper 直读的完整步骤见第 3A 节。
 2. **图像模式**（只有设计图）：`ui_diff` 是主判据，`ui_probe` 审计模式补规范问题。
 3. **无素材模式**（都没有）：规则门禁 + 审计探针 + 同类型基准页自比（第 8 节）。
 
 > 探测不到团队任务板、设计工具 MCP 都是正常情况。基线形态必须能把闭环跑完，
 > 并在报告里写清「本次模式 / 设计源」。
+
+## 3A. 设计源 A：Paper 直读（主路径，不需要截图）
+
+有 Paper MCP、且能拿到结构化节点样式时，优先走这条：直接读设计值生成 ui-spec，交给
+`ui_probe(expected)` 做契约验收；**设计图 / 截图不再是主判据**。
+
+前提：
+- 会话里能调用 Paper MCP 的只读工具；端点由使用者配置（见 `docs/paper-mcp.md`）。本插件不连接
+  任何 MCP、不读凭据。
+- 只需要 fileId 与 artboard nodeId。`get_tokens` / `get_tree_summary` / `get_children` /
+  `get_computed_styles` **都必须显式传 fileId**（描述可省略，实际 schema 强制）。
+- 写类工具（`write_html` / `update_styles` / `create_artboard` / `delete_nodes` /
+  `set_text_content`）在验收流程里一律禁用。
+
+可执行步骤：
+1. `get_basic_info` → 选目标 artboard，记录 `id` / `width` / `height`；视口取这个画板，不按桌面默认值猜。
+2. `get_tokens({ fileId })` → 可能返回 `[]`：设计稿没用 token 是正常情况，**不要假设有 token**，
+   也不要因此改走截图模式。
+3. `get_children({ fileId, nodeId })` 从 artboard 开始**逐层 BFS** 采集节点（默认 `--max-depth 3`、
+   `--max-nodes 200`）：记录 `{ id, name, component, childCount, depth, parentId }`，只保留需要验收的节点
+   （容器 / 文本 / 按钮 / 卡片）。**不要用 `get_tree_summary` 取节点**——Paper 0.5.19 的
+   `get_tree_summary` 只返回文本树（`{ summary: "Frame ..." }`），仅用于概览。
+4. 对采集到的 `nodeIds` **分批**（每批 ≤ 50）调用 `get_computed_styles({ fileId, nodeIds: [ ... ] })`，
+   合并结果；某一批失败只跳过该批并记 warning。再按 ui-spec 白名单过滤
+   （`schemas/ui-spec.schema.json`，或 `lib/spec.js` 的 `PROPERTY_RULES`）。
+5. 生成 `ui-spec.json`：`version: 1`，`viewport` 取 artboard 宽高，`elements[]` 每项
+   `{ selector, label?, note?, properties }`；tokens 为空时只写 nodes，不写 token 段。
+6. 交给验收：`ui_probe({ profile, expected: "<ui-spec.json>", url, run })`。
+7. 可选自动完成 1–5：`node scripts/paper-to-ui-spec.mjs --file <fileId> --artboard <nodeId>
+   --out ui-spec.json --max-depth 3 --url "$PAPER_MCP_URL"`（端点也可只走环境变量 `PAPER_MCP_URL`）。
+
+字段映射：
+
+| Paper | ui-spec | 说明 |
+| --- | --- | --- |
+| `node.id` | `elements[].selector` | 由画师声明 Paper node → 页面 selector 的映射并写进交接；脚本先输出 `[data-node-id="…"]` 占位，不能直接当最终 selector |
+| `node.name` | `elements[].label` | 人类可读名，进报告 |
+| `get_computed_styles` 的键（kebab-case，如 `font-size`） | `properties.fontSize` | 映射到 ui-spec 白名单键；白名单外属性丢弃 |
+| 数值（`12` / `"12"`） | 长度属性 → `"12px"`；数值属性 → `12` | 长度统一 px，数值保持 number |
+| 颜色（`#C72926` / `rgb(...)`） | `"#c72926"` / `"rgb(...)"` | 统一 #rrggbb 或 rgb() |
+| `artboard.width/height` | `viewport.width/height` | dpr 默认 1；要 2x 截图时在档案设备档声明 |
+
+截图还什么时候用：只用于渲染类兜底——字体回退 / 字形差、图片裁切、阴影、溢出、遮挡、动效终态；
+这些无法从 computed styles 判定。有 Paper 时不再用「设计图」模式（不要同一轮既拿设计图做像素
+比对、又把 Paper 值当契约主判据）；没有 Paper 才退回设计图或无素材模式。Paper 的 `get_screenshot`
+可以当对照图，但不是主判据。
 
 ## 4. 每轮闭环（唯一流程）
 

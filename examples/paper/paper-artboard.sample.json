@@ -1,0 +1,81 @@
+{
+  "_comment": "脱敏样本：Paper MCP get_basic_info / get_tokens / get_tree_summary / get_computed_styles 的归一化响应。用于 paper-to-ui-spec.mjs 的离线单测与文档示例；不包含真实文件 id。",
+  "file": {
+    "id": "file_sample",
+    "name": "Marketing Home"
+  },
+  "artboards": [
+    {
+      "id": "artboard_home",
+      "name": "Home - Desktop",
+      "width": 1440,
+      "height": 1200
+    }
+  ],
+  "tokens": [],
+  "tree": {
+    "id": "artboard_home",
+    "name": "Home - Desktop",
+    "type": "frame",
+    "children": [
+      {
+        "id": "n-hero",
+        "name": "Hero",
+        "type": "frame",
+        "children": [
+          { "id": "n-hero-title", "name": "Hero title", "type": "text" },
+          { "id": "n-hero-sub", "name": "Hero subtitle", "type": "text" }
+        ]
+      },
+      { "id": "n-cta", "name": "Primary CTA", "type": "button" },
+      { "id": "n-card", "name": "Feature card", "type": "frame" }
+    ]
+  },
+  "computedStyles": [
+    {
+      "nodeId": "n-hero-title",
+      "styles": {
+        "font-size": "48px",
+        "line-height": "56px",
+        "letter-spacing": "-0.02em",
+        "color": "#111827",
+        "font-weight": "700"
+      }
+    },
+    {
+      "nodeId": "n-hero-sub",
+      "styles": {
+        "font-size": "12px",
+        "line-height": "16px",
+        "color": "#666666",
+        "font-weight": "400"
+      }
+    },
+    {
+      "nodeId": "n-cta",
+      "styles": {
+        "background-color": "#C72926",
+        "border-radius": "999px",
+        "height": "48px",
+        "padding-left": "24px",
+        "padding-right": "24px",
+        "font-size": "14px",
+        "color": "#ffffff",
+        "font-weight": "700"
+      }
+    },
+    {
+      "nodeId": "n-card",
+      "styles": {
+        "background-color": "#ffffff",
+        "border-radius": "12px",
+        "padding-top": "24px",
+        "padding-left": "24px",
+        "padding-right": "24px",
+        "width": "368px",
+        "height": "240px",
+        "box-shadow": "0 8px 24px rgba(0, 0, 0, 0.12)"
+      }
+    }
+  ]
+}
