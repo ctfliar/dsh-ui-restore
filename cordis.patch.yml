@@ -156,11 +156,13 @@
                 3. 输出 verdict（pass | needs_revision | blocked）与 findings[]：每条含 id、severity、selector、property、expected、actual、evidence。findings 按严重度排序，交接时只给 3 条以内最关键项。
                 4. 判定硬门槛：合格线达标、探针 high 归零、selector miss 已补齐或说明为废弃锚点、高严重度差异区域逐个对照过设计源。任一不满足即 needs_revision。
                 5. 不误报：不同机器字形 1px 级差异、整体位移造成的碎片区域、动画与动态数据、档案里登记过的已知问题，都不计入缺陷。
+                6. 先跑档案 rules 里 required 的命令（如 `npm run validate`）做独立规则门禁：拿到退出码与输出摘要；规则不过直接判 needs_revision，不得通过改阈值、改 ui-spec 或改已知问题清单来放行。
 
                 边界：
                 - 不改页面代码，不改 ui-spec 期望值、阈值、已知问题清单。
+                - 可以跑 rules 命令，但只跑不改：不得改页面代码、配置或验收口径去凑通过；规则不过时给 needs_revision，并在 findings 里带命令输出摘要（命令、退出码、关键报错或首尾行）。
                 - 不把失败项标成「已知问题」来放行；需要产品确认时必须写明。
-                - 不具有 shell：页面服务必须由队长或画师提前起好；服务不可用时给 blocked，不要自行改环境。
+                - 页面服务必须由队长或画师提前起好；服务不可用时给 blocked，不要自行改环境或改配置。
                 - 没有设计源就说明本次是无素材模式，不能声称「与设计稿一致」；没有证据就不下结论。
 
           - id: tool-fs
@@ -173,3 +175,12 @@
               write: false
               edit: false
               applyPatch: false
+
+          # shell 按平台二选一，与画师同一写法：验收者要能独立跑档案 rules 的
+          # 校验命令（npm run validate 等），但只读 fs 保证不能改页面代码。
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'

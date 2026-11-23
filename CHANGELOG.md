@@ -1,6 +1,37 @@
 # Changelog
 
-## 0.1.0
+本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
+`package.json` 的版本号是唯一版本源；发布用 `npm run release:*`（见 README「发布与版本约定」）。
+
+## [Unreleased]
+
+## [0.1.1] - 2026-11-23
+
+### Added
+
+- **技能自动注册**：插件自带的 `skills/ui-restore/SKILL.md` 现在由 `lib/skill.js`
+  通过 `ctx.skills.register()` 注册成 runtime skill（rank 250）。安装后新会话的 skill
+  目录即可发现 `ui-restore`，不需要用户手工拷贝到 `.dsh/skills` 或 `customSkillDirs`。
+  技能目录由 `import.meta.url` 推导，源码不出现本机绝对路径；注册走
+  `ctx.inject(['skills'])` 可选依赖，缺 skills service 的精简组合只是不注册技能，
+  不影响四个工具挂载。
+- **发布工具**：新增 `scripts/release.mjs` 与 npm scripts `release:dry` / `release:patch` /
+  `release:minor`。默认 dry-run 打印工作区状态、当前/目标版本、npm 登录态与将执行的
+  `npm version` / `npm publish --tag`；只有 `--apply` 才执行。脏工作区、目标版本未变、
+  `engines.dsh` 与当前运行时冲突、npm 未登录都会拒绝并说明；不 push 任何 git 远端。
+
+### Changed
+
+- **验收者获得 shell**：`ui-restore-verifier` 预设按平台二选一挂 `tool-bash` /
+  `tool-pwsh`（`disabled: !!js process.platform === 'win32'` / `!== 'win32'`，与画师同一写法），
+  fs 仍保持只读（`read`/`readImage` true，`write`/`edit`/`applyPatch` false）。
+  persona 增加「跑档案 rules 命令但只跑不改」的职责：规则不过判 `needs_revision`，
+  并在 findings 里给命令输出摘要（命令、退出码、关键报错或首尾行）。
+- **engines 策略放宽**：`engines.dsh` 改为 `>=0.2.2-rc.5 || >=0.3.0-rc.1`。
+  README 写明维护规则：只有新的 DSH minor 预发布经过实测，才在范围里追加对应 clause；
+  不使用 `*`。因此 `0.4.0-rc.1` 等未实测的新 minor 预发布默认不满足；需要时先实测再追加 clause。
+
+## [0.1.0] - 2026-11-23
 
 首个可用版本。
 
@@ -44,15 +75,12 @@
 
 ### 发布元数据
 
-- `package.json`：声明 `engines.dsh >=0.2.2-rc.5`（本机实测运行时）与
-  `engines.node >=20.10.0`；`exports` 的 `.` 指向 `./lib/index.js`（与 `main` 一致），
-  并暴露 `cordis.patch.yml`、`schemas/ui-spec.schema.json`、`package.json`；
-  `files` 覆盖 lib/schemas/profiles/skills/docs/examples/scripts/locale 与
-  cordis.patch.yml、README、CHANGELOG、LICENSE、icon.svg。
-- README 增加「兼容性」一节：DSH 0.2.2-rc.5 实测、engines 下限、浏览器依赖，
-  并把「`--browser` 自测需可启动浏览器的环境」列为已知限制。
-- README 增加「依赖矩阵」（必需基线 / 可选团队任务板 / 可选设计 MCP）、
-  「三个预设」、「发布与版本约定」三节。
+- `package.json`：声明 `engines.dsh`（本机实测运行时）与 `engines.node >=20.10.0`；
+  `exports` 的 `.` 指向 `./lib/index.js`（与 `main` 一致），并暴露 `cordis.patch.yml`、
+  `schemas/ui-spec.schema.json`、`package.json`；`files` 覆盖 lib/schemas/profiles/
+  skills/docs/examples/scripts/locale 与 cordis.patch.yml、README、CHANGELOG、LICENSE、icon.svg。
+- README 增加「兼容性」「依赖矩阵」「三个预设」「发布与版本约定」等章节，并把
+  「`--browser` 自测需可启动浏览器的环境」列为已知限制。
 
 ### 配套
 

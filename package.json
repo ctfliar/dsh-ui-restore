@@ -27,7 +27,7 @@
   ],
   "engines": {
     "node": ">=20.10.0",
-    "dsh": ">=0.2.2-rc.5"
+    "dsh": ">=0.2.2-rc.5 || >=0.3.0-rc.1"
   },
   "publishConfig": {
     "access": "public"
@@ -40,7 +40,10 @@
   "scripts": {
     "selftest": "node scripts/selftest.mjs",
     "selftest:browser": "node scripts/selftest.mjs --browser",
-    "check": "node --check lib/index.js && node --check lib/browser.js && node --check lib/diff.js && node --check lib/probe.js && node --check lib/spec.js && node --check lib/profile.js && node --check lib/paths.js && node --check lib/report.js && node --check scripts/selftest.mjs"
+    "release:dry": "node scripts/release.mjs",
+    "release:patch": "node scripts/release.mjs --bump patch --apply",
+    "release:minor": "node scripts/release.mjs --bump minor --apply",
+    "check": "node --check lib/index.js && node --check lib/browser.js && node --check lib/diff.js && node --check lib/probe.js && node --check lib/spec.js && node --check lib/profile.js && node --check lib/paths.js && node --check lib/report.js && node --check lib/skill.js && node --check scripts/selftest.mjs && node --check scripts/release.mjs"
   },
   "keywords": [
     "dsh-plugin",

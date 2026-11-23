@@ -32,12 +32,30 @@ plugin_manager { "action": "install_bundle", "target": "<本目录绝对路径>"
 1. 四个工具成为 **Host 全局工具**，当前 profile 的所有 agent 都能用；
 2. `cordis.patch.yml` 同时声明了三个 **Agent 预设**（队长 / 画师 / 验收者），
    在会话的预设列表里可以直接选中；
-3. 项目档案放在工作区的 `ui-restore-profiles/<id>.json`（内置示例见 `profiles/`）。
+3. 项目档案放在工作区的 `ui-restore-profiles/<id>.json`（内置示例见 `profiles/`）；
+4. 包内 `skills/ui-restore/SKILL.md` 会注册成 runtime skill，会话的 skill 目录直接可见
+   （见下节，不需要手工拷贝）。
 
 浏览器依赖 `playwright-core`（已在 `dependencies` 声明）。它按以下顺序解析：
 包内 `node_modules` → 环境变量 `DSH_UI_RESTORE_PLAYWRIGHT` → `DSH_PROFILE_DIR/node_modules`
 → `DSH_INSTALL_DIR/node_modules`。启动时依次尝试 `chromium`、`chrome`、`msedge`，
 也可以用 `executablePath` 指定任意 Chromium 内核浏览器。
+
+## 技能自动注册
+
+- **原理**：插件加载时 `lib/skill.js` 读取包内 `skills/ui-restore/SKILL.md`，通过
+  `ctx.skills.register()` 注册为 **runtime skill**（rank 250，`provider: runtime`）。
+  DSH 的技能目录会合并 runtime 技能，因此安装后新会话直接能看到 `ui-restore`，
+  不依赖 `customSkillDirs`，也不需要用户手工拷贝 SKILL.md。
+- **可移植性**：技能目录由 `import.meta.url` 推导（`PLUGIN_ROOT`），源码里没有本机绝对路径；
+  注册走 `ctx.inject(['skills'], …)` 可选依赖——没有 skills service 的精简组合只是
+  不注册技能，四个工具照常挂载。
+- **覆盖关系**：项目技能（rank 100/200）优先于 runtime；用户技能（400/500）与
+  bundled 技能（600）低于 runtime，同名时以本插件的版本为准（本地项目仍可覆盖）。
+- **验证方法**：`node scripts/selftest.mjs` 的核心集包含「技能自动注册：包内 SKILL.md
+  可读…」「ctx.inject(["skills"]) 注册载荷…」「工具入口级：apply() 会注册内置 skill」
+  三条用例；在 DSH 里可另用 `skill` 工具列目录，或直接看会话 skill catalog 是否出现
+  `ui-restore`。
 
 ## 依赖矩阵
 
@@ -67,13 +85,15 @@ plugin_manager { "action": "install_bundle", "target": "<本目录绝对路径>"
 | --- | --- | --- | --- | --- |
 | `ui-restore`（队长） | 40 | persona + `tool-fs` + `tool-subagent`（`provider: spawn`，`agentPreset: ui-restore-painter`，`allowedAgentPresets: [ui-restore-painter, ui-restore-verifier]`） | 建档案、探能力、派活、收敛判定、交付报告 | 不写页面代码、不改验收口径 |
 | `ui-restore-painter`（画师） | 41 | persona + `tool-fs`（读写）+ shell（Windows 用 `tool-pwsh`，其它平台用 `tool-bash`，按平台二选一） | 在 inScope 内实现页面、跑规则门禁、自看截图、声明 selector 映射 | 不判 pass/fail、不改 ui-spec/阈值/knownIssues |
-| `ui-restore-verifier`（验收） | 42 | persona + `tool-fs`（`write: false`、`edit: false`、`applyPatch: false`） | 截图、探针、差异、判定、报告 | 只读：不改页面代码与验收口径 |
+| `ui-restore-verifier`（验收） | 42 | persona + `tool-fs`（`write: false`、`edit: false`、`applyPatch: false`）+ shell（Windows 用 `tool-pwsh`，其它平台用 `tool-bash`，按平台二选一） | 跑档案 rules 门禁、截图、探针、差异、判定、报告 | 只读：跑命令但不改页面代码、配置与验收口径 |
 
 用法：
 
 1. 会话预选用 `ui-restore`（队长），或直接用默认预设手动按 SKILL 推进；
 2. 队长通过 `subagent` 派活时，`agent_preset` 选 `ui-restore-painter` 或 `ui-restore-verifier`；
 3. **只读保证**：Web / Desktop 组合把 fs 工具放在预设平面，验收者预设的 `write/edit` 关闭就是硬约束。
+   验收者的 shell 只用来跑档案 rules 命令（如 `npm run validate`），不能改页面代码；规则不过就判
+   `needs_revision` 并给命令输出摘要。
    在以 Host 行挂载 `tool-fs` 的组合（如基线 TUI）里，同名工具仍对整个会话可见——
    此时「验收者不改代码」由 persona 约束；需要硬保证时，把 Host 的 `tool-fs` 行也改成只读，
    或改用 Web/Desktop 的预设平面。
@@ -268,17 +288,24 @@ output/ui-restore/<run>/
 
 | 项 | 说明 |
 | --- | --- |
-| DeepSeek Harness | **已在 `@deepseek-ai/dsh@0.2.2-rc.5` 实测**；`package.json` 的 `engines.dsh` 下限即该版本（`>=0.2.2-rc.5`）。更低运行时会在安装前被 plugin_manager 拒绝，避免装出半坏状态。 |
+| DeepSeek Harness | **已在 `@deepseek-ai/dsh@0.2.2-rc.5` 实测**；`engines.dsh` 为 `>=0.2.2-rc.5 || >=0.3.0-rc.1`。只有新的 DSH minor 预发布经过实测，才追加对应 clause；不使用 `*`。 |
 | Node.js | `>=20.10.0`（`engines.node`）。 |
 | 浏览器 | Playwright `chromium` 通道，或系统 Chrome / Edge；`executablePath` 可指定任意 Chromium 内核二进制。 |
 | Playwright | `playwright-core ^1.49.0`（本机实测 1.65.1）。 |
+
+`engines.dsh` 维护规则：每出现一个新的 DSH minor 预发布（例如 `0.3.0-rc.1`），只有在本插件
+于该版本上跑通 `node scripts/selftest.mjs --browser` 之后，才在范围里追加 `|| >=<该版本>`；
+不提前放行未实测的版本，也不写 `*`。因此 `0.4.0-rc.1` 等未实测的新 minor 预发布默认不满足；
+需要时先实测再追加 clause。补丁版本（`0.2.x`）直接落在已有 clause 内，无需改动。
 
 已知限制：
 
 - **`node scripts/selftest.mjs --browser` 需要能启动浏览器的环境**：受限沙箱可能禁止子进程创建命名管道（表现为 `spawn EPERM`），此时只能跑核心集 `node scripts/selftest.mjs`（不需要浏览器）。
 - `ui_diff` 只解码 8 位、非隔行 PNG；16 位或隔行 PNG 会给出明确报错，需要先转换。
 - 报告 HTML 不加载任何 JavaScript；差异表的排序在生成阶段按 severity → delta 完成。
-- 验收者预设没有 shell：页面服务必须由队长或画师提前起好，验收期间保持可用。
+- 验收者可以跑档案 rules 命令（shell 按平台二选一），但 fs 只读；页面服务仍需由队长或画师提前起好，服务不可用时判 `blocked`。
+- 极端精简的组合若没有 skills service，技能不会自动注册（四个工具仍可用）；此时把
+  `skills/ui-restore/SKILL.md` 手工放进项目 `.dsh/skills` 或 `customSkillDirs` 即可。
 
 ## 自测
 
@@ -297,6 +324,8 @@ node scripts/selftest.mjs --out ./tmp/selftest   # 指定产物目录（默认�
 核心集还包含**浏览器层假注入**用例：`capturePage` / `withPage` / `runProbe` 都接受
 `launcher`（默认走 playwright），用假 browser/page 覆盖 `channel`、`width/height/dpr`、
 审计与契约两种探针结构，因此这类只有真实浏览器才暴露的缺陷在无浏览器环境也能测出来。
+核心集另外覆盖**技能自动注册**：包内 SKILL.md 可读且无本机路径、`ctx.inject(['skills'])`
+的注册载荷、以及 `apply()` 是否真的接线（假 ctx 验证）。
 
 ## 浏览器排错
 
@@ -330,6 +359,8 @@ node scripts/selftest.mjs --out ./tmp/selftest   # 指定产物目录（默认�
 - **报告图片 eager 加载**：本地单文件报告不启用 `loading="lazy"`——图片与报告同目录、
   体积可控，eager 加载能让 `load` 事件后立刻读到已解码图片，自动化截图/打印不会读到
   半加载状态。
+- **技能随包注册，不靠外部目录**：`ctx.skills.register()` 把包内 SKILL.md 注册成
+  runtime skill，路径由包位置推导；项目技能 rank 更高，仍可在本地覆盖。
 - **预设只做编排，不重复声明本插件的工具**：四个 `ui_*` 是 Host 行；预设只固化角色、
   必要的基线工具（fs / shell / subagent）与只读约束。
 
@@ -347,12 +378,14 @@ dsh-ui-restore/
   lib/profile.js          项目档案加载、默认值与查找
   lib/report.js           Markdown + 单文件 HTML 报告
   lib/paths.js            路径、run 目录、meta.json
+  lib/skill.js            包内 SKILL 自动注册（runtime skill）
   schemas/                ui-spec JSON Schema
   profiles/               内置示例档案 + _schema.md（字段说明）
   skills/ui-restore/      给 agent 的闭环操作手册（SKILL.md）
   docs/                   设计源接入、团队集成（可选能力）
   examples/static-demo/   无外网、无构建的夹具页（设计基准 / 缺陷实现 / 审计页）
   scripts/selftest.mjs    自测
+  scripts/release.mjs     本地发布工具（bump + npm publish，不 push 远端）
   locale/                 报告文案 zh / en
 ```
 
@@ -364,6 +397,18 @@ dsh-ui-restore/
   docs / examples / scripts / locale + 补丁、README、CHANGELOG、LICENSE、icon）。
   发布前跑一遍 `npm pack --dry-run` 确认没有多余文件。
 - **兼容性声明**：`engines.dsh` 与 `engines.node` 是安装期硬门槛；提高下限属于不兼容变更。
+  维护规则见「兼容性」一节（新 minor 预发布实测后才追加 clause）。
+- **发布流程**（本地 git + npm，不 push 远端）：
+
+  ```bash
+  npm login                 # 首次或登录过期
+  npm run release:dry       # 默认 dry-run：工作区状态 / 当前→目标版本 / npm 登录态 / 将执行的命令
+  npm run release:patch     # 或 npm run release:minor：bump + `npm publish --tag latest`
+  ```
+
+  `scripts/release.mjs` 在 `--apply` 前会拒绝：脏工作区、目标版本与当前相同、
+  `engines.dsh` 与当前运行中的 DSH 冲突、npm 未登录。它不会 push 任何 git 远端，
+  本地 commit 与 tag 保留，是否推送由你手动决定；`--tag` 可指定 dist-tag（默认 `latest`）。
 - **预设变更**：预设行 id（`preset-ui-restore*`）一旦发布就当作公开 id；改名会打断已选该预设的会话。
 - **报告契约**：`report.md` / `report.html` 的章节与 `diff.json` / `probe.json` 的字段
   是下游可依赖的稳定面，新增字段可以，删除/改名要按不兼容变更处理。

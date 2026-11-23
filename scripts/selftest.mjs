@@ -24,6 +24,7 @@ import { buildReport } from '../lib/report.js';
 import { auditExpressionSource, buildAuditResult, buildSpecResult, runProbe } from '../lib/probe.js';
 import { capturePage, launchBrowser, withPage } from '../lib/browser.js';
 import { ensureDir, mergeMeta, profileSummary, readMeta, writeJsonFile } from '../lib/paths.js';
+import { SKILL_FILE, readBundledSkill, registerBundledSkill } from '../lib/skill.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -208,6 +209,8 @@ async function loadToolEntryHarness() {
   const dir = join(baseDir, 'tool-entry-harness');
   const libDir = join(dir, 'lib');
   cpSync(fileURLToPath(new URL('../lib', import.meta.url)), libDir, { recursive: true });
+  // 技能自动注册会按 PLUGIN_ROOT 读 skills/，所以复制时要带包内技能目录。
+  cpSync(fileURLToPath(new URL('../skills', import.meta.url)), join(dir, 'skills'), { recursive: true });
   writeModuleStub(
     join(dir, 'node_modules', '@deepseek-ai', 'schemastery'),
     'index.mjs',
@@ -831,6 +834,83 @@ async function coreSuite() {
     }
     assertEqual(report.summary.regions, diff.regions.length, '区域数应与 diff 一致');
     assertEqual(report.summary.mode, 'design', '模式');
+  });
+
+  // ---- 技能自动注册（装上即可被 catalog 发现） -----------------------------
+
+  await test('技能自动注册：包内 SKILL.md 可读、frontmatter 已剥离、无本机绝对路径', () => {
+    const skill = readBundledSkill();
+    assert(skill, '应读取到 skills/ui-restore/SKILL.md');
+    assertEqual(skill.name, 'ui-restore', '技能名');
+    assert(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skill.name), '技能名应为 kebab-case');
+    assert(skill.description.length > 10, 'description 应非空');
+    assert(skill.whenToUse.length > 10, 'whenToUse 应非空');
+    assert(skill.content.length > 5000, `SKILL 正文应完整，实际 ${skill.content.length} 字节`);
+    assert(skill.content.startsWith('# SKILL'), 'frontmatter 应被剥离，正文以标题开头');
+    assertEqual(skill.resourceBase.kind, 'directory', 'resourceBase 类型');
+    assertEqual(skill.source, 'runtime', 'source 应为 runtime（registry 必填）');
+    assertEqual(resolve(skill.path), resolve(SKILL_FILE), 'path 应指向包内 SKILL.md');
+    assert(existsSync(join(skill.resourceBase.path, 'SKILL.md')), 'resourceBase 应指向包内技能目录');
+    assertEqual(resolve(skill.resourceBase.path), resolve(SKILL_FILE, '..'), '技能目录应与包内路径一致');
+
+    // 实现不得硬编码本机绝对路径（运行时路径由 import.meta.url 推导即可）。
+    const source = readFileSync(new URL('../lib/skill.js', import.meta.url), 'utf8');
+    assert(!/['"`][A-Za-z]:[\\/]/.test(source), 'lib/skill.js 不应出现盘符绝对路径字面量');
+  });
+
+  await test('技能自动注册：ctx.inject(["skills"]) 注册载荷与 SKILL 一致', () => {
+    const skill = readBundledSkill();
+    const captured = {};
+    const fakeSkillCtx = {
+      skills: {
+        register: (payload) => {
+          captured.registered = payload;
+          return () => {};
+        },
+      },
+      effect: (factory) => {
+        captured.effectDisposer = typeof factory();
+        return () => {};
+      },
+    };
+    const fakeCtx = {
+      inject: (deps, callback) => {
+        captured.deps = deps;
+        callback(fakeSkillCtx);
+      },
+    };
+    assertEqual(registerBundledSkill(fakeCtx), true, '应发起注册');
+    assertEqual(JSON.stringify(captured.deps), JSON.stringify(['skills']), '应注入 skills service');
+    assert(captured.registered, '应调用 skills.register');
+    assertEqual(captured.registered.name, skill.name, '注册名');
+    assertEqual(captured.registered.content, skill.content, '注册正文与 SKILL.md 一致');
+    assertEqual(captured.registered.resourceBase.path, skill.resourceBase.path, 'resourceBase 一致');
+    assertEqual(captured.effectDisposer, 'function', '注册 disposer 应交给 ctx.effect 持有');
+    assertEqual(registerBundledSkill({}), false, '没有 inject 的上下文应静默跳过');
+  });
+
+  await test('工具入口级：apply() 会注册内置 skill（假 ctx 验证接线）', async () => {
+    const module = await getToolEntryHarness();
+    const captured = {};
+    const fakeCtx = {
+      tools: { register: () => () => {} },
+      inject: (deps, callback) => {
+        captured.deps = deps;
+        callback({
+          skills: {
+            register: (payload) => {
+              captured.skill = payload;
+              return () => {};
+            },
+          },
+          effect: (factory) => factory(),
+        });
+      },
+    };
+    module.apply(fakeCtx, {});
+    assertEqual(JSON.stringify(captured.deps), JSON.stringify(['skills']), 'apply 应注入 skills');
+    assertEqual(captured.skill?.name, 'ui-restore', 'apply 应注册 ui-restore 技能');
+    assert(captured.skill?.content.includes('# SKILL'), '注册正文应来自包内 SKILL.md');
   });
 
   await test('项目档案缺字段走默认值；未知档案与非法 designSource 报错', () => {
