@@ -1,7 +1,7 @@
 # 项目档案（profile）字段说明
 
 项目档案是一份**零依赖 JSON**：它只描述「这次还原验收的夹具」——设备档、合格线、
-规则命令、设计源、基准页、已知问题。插件只读它，不执行里面的任何命令，也不连接任何服务。
+规则命令、设计源、设计模式与设计简报、基准页、已知问题。插件只读它，不执行里面的任何命令，也不连接任何服务。
 
 放置位置与查找顺序：
 
@@ -43,6 +43,12 @@
     "path": "design/list.png",
     "note": "自由备注"
   },
+  "design": {
+    "mode": "reference",
+    "brief": "订单列表页：运营按状态筛选并批量发货",
+    "styleRefs": ["src/views/order/list.vue", "src/components/ui/Table.vue"],
+    "outputs": ["spec", "mock"]
+  },
   "api": {
     "source": "project",
     "env": "test",
@@ -78,6 +84,10 @@
 | `designSource.artboard` | string | — | 画板名，仅文字引用 |
 | `designSource.path` | string | — | 设计图或 ui-spec 的相对路径，仅文字引用 |
 | `designSource.note` | string | — | 自由备注 |
+| `design.mode` | enum | `"reference"` | `reference` / `from-scratch`；`from-scratch` = 无参考、由设计师自主设计页面。**非法值告警并退回 `reference`** |
+| `design.brief` | string | `""` | 设计简报：目标用户、页面要解决的问题、必须包含的模块 |
+| `design.styleRefs` | string[] | `[]` | 项目里可查的风格参照（同类页面路径、组件、截图文件名）；非数组告警并忽略 |
+| `design.outputs` | enum[] | `["spec","mock"]` | `spec` / `mock` / `paper`；非法值被过滤，空数组或非数组退回 `spec` + `mock`；`paper` 需用户同意 |
 | `api.source` | enum | `"none"` | `none` / `project` / `openapi` / `capture`；非法值告警并退回 `none` |
 | `api.env` | enum | `"test"` | `test` / `prod-readonly`；`prod-readonly` 时接线者只允许 GET |
 | `api.enabled` | boolean | `false` | 是否允许接线者访问真实接口；默认关，避免误连生产 |
@@ -91,6 +101,8 @@
 - 未知顶层字段：只**告警**（写进工具返回的警告里），不报错——方便先试后改。
 - 类型不对的子对象（如 `tokens` 写成数组）：告警并按默认值处理。
 - `designSource.kind` 写错：**直接报错**并列出允许值——设计源决定验收形态，不能猜。
+- `design.mode` 写错：只**告警**并退回 `reference`（先按有参考处理，不阻断开工）；`design.styleRefs`
+  非数组时告警并忽略；`design.outputs` 非数组或过滤后为空时告警并退回默认 `spec` + `mock`。
 - `api.source` / `api.env` 写错：只**告警**并退回安全缺省（`none` / `test`）；`api.allow` 非数组时告警并忽略。
 - 数值兜底：非正数、非数字的宽高/DPR/合格线会退回默认值。
 - `knownIssues` 支持字符串数组；对象元素会尝试取 `text` / `issue` / `id`。
@@ -106,6 +118,11 @@
   不要写成 `required: true`。
 - **基准页**：三同原则——同类型 → 同宽度 → 同数据量。不同数据量的页面不能互比。
 - **knownIssues**：只写产品确认过的。写进去等于放行，别拿来凑合格。
+- **design 段**：只有用户明确要求「自主设计一个页面」且确实没有 Paper 画板 / 设计图 / 参考页时才用
+  `from-scratch`；此时队长先派设计师（ui-restore-designer）产出设计包（design.json / ui-spec /
+  mock.png / design.md），画师再按包实现。`brief` 写清目标用户与页面目标；`styleRefs` 只写项目里
+  可查的风格参照，不要写外部链接；`outputs` 默认 `spec` + `mock`，`paper` 需要用户明确同意且会话里
+  有 Paper 写工具才加。
 - **api 段**：只填真实存在的来源与环境。`enabled` 默认关；打开前先确认测试环境、登录方式和
   凭据环境变量，`allow` 尽量收窄到具体 host。生产只允许 `prod-readonly`（接线者只发 GET）。
   接口找不到就让它 `blocked`，不要用 mock 冒充已接。

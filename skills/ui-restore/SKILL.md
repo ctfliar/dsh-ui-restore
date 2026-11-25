@@ -9,10 +9,12 @@
 
 | 名词 | 含义 | 落在哪 |
 | --- | --- | --- |
-| 项目档案 | 一次接入的夹具声明：设备档、合格线、规则、设计源、基准页、已知问题 | `<工作区>/<档案目录>/<id>.json`（默认 `ui-restore-profiles/<id>.json`） |
+| 项目档案 | 一次接入的夹具声明：设备档、合格线、规则、设计源、设计模式、基准页、已知问题 | `<工作区>/<档案目录>/<id>.json`（默认 `ui-restore-profiles/<id>.json`） |
 | run 目录 | 一次还原验收的全部产物：截图、设计图、热力图、探针 JSON、报告 | `<runRoot>/<run>`（默认 `output/ui-restore/<run>`） |
 | api-map | 接线者产出的接口映射：UI 元素/动作 → method+path → 入参 → 响应字段 → 状态 | `<run>/api-map.json` |
 | ui-spec | 机器可读的样式契约：selector + 属性期望值 | 任意 JSON 文件，schema 见插件 `schemas/ui-spec.schema.json` |
+| design 段 | 档案里的设计模式声明：`mode`（`reference` / `from-scratch`）、`brief`、`styleRefs`、`outputs` | 档案 JSON 的 `design` 字段 |
+| 设计包 | 无参考时设计师产出的设计依据：`design.json` / `ui-spec.json` / `mock.html` / `mock.png` / `design.md`（可选 `paper.png`） | `<run>/design/` |
 | 判定 | 有资格的结论：`pass` / `needs_revision` / `blocked` + findings | run 目录里的 `report.md` / `probe.json` / `diff.json` |
 
 最小调用形状（`ui_capture` / `ui_probe`）：
@@ -37,6 +39,10 @@
    - `tokens.files`：设计 token 来源文件（供人和模型查证，插件只做文字引用）。
    - `baseline.pages`：无设计源时用的「三同」基准页（同类型 → 同宽度 → 同数据量）。
    - `designSource.kind`：`none`（无设计源）/ `image`（设计图）/ `mcp`（外部设计工具产出的结构化文件）。
+   - `design`：设计模式声明（见 3B）。`mode` 取 `reference`（默认：有设计源、或无素材模式）或
+     `from-scratch`（无参考、且用户明确要求自主设计）；`from-scratch` 时还要写 `brief`（设计目标）、
+     `styleRefs`（可读的风格参考路径/URL）、`outputs`（`spec` / `mock`，可选 `paper`）。
+     默认值即旧行为，不写这段等于 `reference`。
    - `api`：页面要连真实接口时的接线约定——`source`（`project` / `openapi` / `capture` / `none`）、
      `env`（`test` / `prod-readonly`）、`enabled`、`allow`（允许访问的 host/path 前缀）、`authEnv`
      （凭据所在环境变量名）。只做视觉还原、不接后端时留默认值即可。
@@ -60,15 +66,18 @@
 | 项目校验命令 | 档案 `rules` 里是否有 `required: true` 的项，命令能否跑通 | 规则门禁（第 0 层） | 没有机械门禁就在报告里写明「本项目无机械门禁」，不要假装跑过 |
 | 设计工具 MCP（结构化，含 Paper 直读） | 会话里能否调用 `get_basic_info` / `get_computed_styles` 等只读工具（见第 3A 节） | 生成 ui-spec，走契约模式 | 用设计图（图像模式） |
 | 设计图 | 档案 `designSource.kind = image` 且 PNG 可读 | `ui_diff` 像素比对 | 走无素材模式（第 8 节） |
+| 设计能力（无参考自主设计） | 用户明确说「没有设计稿，你来设计」，且档案 `design.mode = from-scratch`；会话能只读项目样式/页面 | 先产出设计包（3B），再让画师照着实现 | `design.mode` 保持 `reference`：走 3A / 设计图 / 第 8 节，**不要自行「自己设计一个」来补设计源** |
 | 团队任务板 | 会话里是否出现团队/任务板相关工具 | 并行多页面、任务状态可审计 | 用基线的 subagent 串行闭环，产物仍然落 run 目录 |
 | 后端接口 | 项目里有没有 api 目录 / request 封装，OpenAPI 是否存在，参考页能否抓到请求 | 接线者把页面数据层接到真实接口 | 没有接口来源时接线者给 blocked，列缺失清单，不编造 |
 
-三种形态：
+四种形态：
 
 1. **结构化模式**（Paper 直读 / 有设计工具产物 / 有手写 ui-spec）：`ui_probe` 契约模式是主判据，
    `ui_diff` 只在同时有设计图时补充。Paper 直读的完整步骤见第 3A 节。
 2. **图像模式**（只有设计图）：`ui_diff` 是主判据，`ui_probe` 审计模式补规范问题。
 3. **无素材模式**（都没有）：规则门禁 + 审计探针 + 同类型基准页自比（第 8 节）。
+4. **设计模式**（无参考、用户明确要求自主设计，`design.mode = from-scratch`）：先由设计师产出设计包，
+   之后按设计包走「结构化 + 图像」双判据（第 3B 节）。
 
 > 探测不到团队任务板、设计工具 MCP 都是正常情况。基线形态必须能把闭环跑完，
 > 并在报告里写清「本次模式 / 设计源」。
@@ -118,6 +127,58 @@
 这些无法从 computed styles 判定。有 Paper 时不再用「设计图」模式（不要同一轮既拿设计图做像素
 比对、又把 Paper 值当契约主判据）；没有 Paper 才退回设计图或无素材模式。Paper 的 `get_screenshot`
 可以当对照图，但不是主判据。
+
+## 3B. 设计模式（无参考、明确要求自主设计）
+
+**只有用户明确说「没有设计稿，你来设计」时才走这里。** 档案 `design.mode` 必须是 `from-scratch`
+（`brief` / `styleRefs` / `outputs` 一并写清）；默认值是 `reference`，谁都不许自行改成
+`from-scratch` 来「补一个设计源」——自己画一张再自己比，等于既当选手又当裁判。
+
+什么时候用：
+- 新页面/新模块没有设计稿，产品需要一个能讨论、能验收的视觉方案；
+- 用户接受「先定风格 → 再按风格实现」，并接受设计包是**自产的、新的**依据（不是客户设计稿）。
+
+先读项目风格（缺了就问，不要猜）：
+1. `tokens.files` 里的 token 文件、全局样式、主题变量；
+2. 现有页面里的同类组件与骨架（按钮、表格、卡片、空态、弹窗、表头）；
+3. 品牌资产（logo、品牌色、字体）——**只能引用现成的，不得编造品牌色**；
+4. `design.styleRefs`：用户给的参考站/截图/竞品链接，只引用可读路径或 URL。
+
+产出物清单（全部落在 `<run>/design/`，**不写进项目源码目录**）：
+
+| 产物 | 作用 | 谁用 |
+| --- | --- | --- |
+| `design.json` | 风格档案：色彩、字号阶梯、间距刻度、圆角/阴影、组件清单、`assumptions` 与取舍 | 画师、验收者 |
+| `ui-spec.json` | 机器可读样式契约（selector + 属性期望值），schema 同 `schemas/ui-spec.schema.json` | 验收者 `ui_probe(expected)` |
+| `mock.html` | 可截图的自包含静态 mock（单文件、内联样式、无外链、无脚本） | 画师对照实现、验收兜底 |
+| `mock.png` | mock 的整屏截图，视口与 DPR 与档案 `devices[0]` 一致 | 验收者 `ui_diff` 的「设计图」 |
+| `design.md` | 人读版设计说明：页面结构、状态、交互、假设与未定项 | 人、画师 |
+| `paper.png`（可选） | 用 Paper 出图时的画板截图 | 验收者对照、留档 |
+
+页面要连真实接口时，设计师另给一份**数据契约**（写进 `design.md`，或单独的 `api-requirements.json`）：
+需要的字段、动作、状态（loading / empty / error / 分页 / 重试）。只写需求，**不编造接口路径与响应**；
+接线者按它接接口，源头仍以档案 `api` 段为准。
+
+Paper 可选出图，**同时满足**两条才做，否则只出 `mock.html` + `ui-spec.json` + `mock.png`：
+- 用户明确同意把设计写进 Paper（写操作会产生真实文件，属于外部副作用）；
+- 会话里确实有 Paper MCP 的写工具（`create_artboard` / `write_html` / `update_styles` 等）。
+
+没同意、或写工具不可用：**不要假装出图**，也不要拿 `mock.png` 冒充「Paper 设计稿」；
+在 `design.md` 与报告的「设计源」里写清「设计包（自产 mock）」。
+
+### 3B 与 3A 的边界（写类工具）
+
+- **3A 的禁令不变**：验收流程里，Paper 写类工具一律禁用——验收者只读，不得改设计稿、改样式、删节点。
+- **3B 允许写，但只写新产物**：只在「新建设计包」这件事上写（`<run>/design/`，或用户同意的 Paper 文件），
+  且必须先拿到用户同意；不改项目代码、不改已有 artboard、不删任何节点。
+- 两者都不改变判定顺序：结构化契约优先，像素比对其次，渲染兜底最后。
+
+硬边界（设计模式也不放宽）：
+
+- **不得改项目代码**：设计师的写权限只用于 `<run>/design/`，项目页面/样式/组件/配置一律只读；
+  页面改动由画师在自己的 inScope 里做。
+- **不得编造品牌色/字体/字号**：取值只能来自 token、现有页面或用户给的材料；确实需要新增时，
+  写进 `design.json` 的 `assumptions`，并在 `design.md` 标「待确认」，不要当成既定品牌规范。
 
 ## 4. 每轮闭环（唯一流程）
 
@@ -212,6 +273,29 @@ api-map 最小形状：
 }
 ```
 
+## 4B. 设计阶段（设计师，仅当 `design.mode = from-scratch`）
+
+顺序固定：**队长派设计师 → 设计师出设计包 → 画师按设计包实现 → 验收者按同一套设计包判定。**
+设计阶段只在页面实现之前跑一次；设计冻结后不要每轮重画。
+
+1. **队长派设计师**：交接 `design` 段、页面范围、真实数据形态（条数/字段）、风格参考与 run 目录。
+   没写 `from-scratch` 就不要派设计师。
+2. **设计师产出设计包**（清单见 3B）：先写 `design.json` 定风格与刻度，再写 `mock.html`，
+   用档案 `devices[0]` 的视口与 DPR 截 `mock.png`，最后把 mock 的实测值抽成 `ui-spec.json`，
+   `design.md` 写清结构、状态与假设。
+3. **用户/队长确认设计包**：一轮确认即可，不要反复改风格。确认后设计冻结——后面只改实现，不改设计包；
+   要改风格必须显式回到这一步并说明原因。
+4. **画师按设计包实现**：`mock.png` 是像素基准、`ui-spec.json` 是属性契约；selector 映射由画师声明
+   （见第 7 节）。设计包是参照物，**不要把它搬进项目源码**，也不要为对上 mock 写死像素。
+5. **验收者按同一套设计包判定**：
+   `ui_diff({ design: "<run>/design/mock.png", shot: "<run>/shot.png" })` +
+   `ui_probe({ expected: "<run>/design/ui-spec.json" })`；报告「设计源」写
+   「设计包（自产 mock，见 `design.md`）」，不要写成外部设计稿或 Paper 产物。
+6. **视口必须一致**：mock 与实现同设备档（同宽高、同 DPR）；不一致时 `sizeMismatch` 会让差异全是
+   缩放噪声，先对齐视口再谈分数。
+
+交接消息模板见第 7 节（队长 → 设计师、设计师 → 画师/验收者）。
+
 ## 5. 判定口径（verdict 与 findings）
 
 判定是最容易放水的地方，按下面的硬门槛逐条过：
@@ -224,7 +308,8 @@ api-map 最小形状：
 | 区域层 | `regions` 里 `high` 区域逐个对照设计源：是真差异，还是字体渲染/整体位移噪音 |
 | 规则层 | 档案里 `required: true` 的命令全部通过 |
 | 接口层 | 页面要连真实接口时：`<run>/api-map.json` 存在、页面没有 mock 假数据冒充、loading/empty/error/分页/重试覆盖、请求入参与 api-map 一致；`api.env = prod-readonly` 时只允许 GET |
-| 模式一致性 | 报告写清「本次模式 / 设计源」；无设计源时不得声称「与设计稿一致」 |
+| 设计层 | `design.mode = from-scratch` 时：设计包齐全（`<run>/design/design.json`、`ui-spec.json`、`mock.png`、`design.md`，`design.md` 写清假设与未定项）；画师实现与 `mock.png` 的 `score` ≥ 档案合格线；mock 与实现同设备档（`sizeMismatch.mismatch = false`）；报告如实写「设计源 = 设计包（自产 mock）」 |
+| 模式一致性 | 报告写清「本次模式 / 设计源」；无设计源时不得声称「与设计稿一致」；设计模式下不得把自产 mock 说成客户设计稿或 Paper 出图 |
 
 `findings[]` 每条至少包含：
 
@@ -265,13 +350,22 @@ api-map 最小形状：
 
 ## 7. 角色提示词与边界
 
-四个角色对应插件的四个预设；没有预设时，也可以由一个人按顺序扮演，但**不要自己验自己**。
+五个角色对应插件的五个预设；没有预设时，也可以由一个人按顺序扮演，但**不要自己验自己**。
 
 ### 队长（编排）
 
-- 负责：建档案、定模式、派活、收敛判定、交付报告。
-- 不负责：写页面代码、改验收口径。
+- 负责：建档案、定模式（含是否 `design.mode = from-scratch`）、派活、收敛判定、交付报告。
+- 不负责：写页面代码、改验收口径、替设计师编风格。
 - 提示词要点：明确「你的交付物是证据与结论，不是代码」；要求每轮只给 1~3 条修复项。
+
+### 设计师（设计，仅无参考时）
+
+- 负责：`design.mode = from-scratch` 时产出设计包（`<run>/design/` 下 `design.json` / `ui-spec.json` /
+  `mock.html` / `mock.png` / `design.md`，Paper 出图时另加 `paper.png`）；先读项目风格再定稿；把假设写清；
+  页面要接接口时给出数据契约（字段/动作/状态），只写需求不编造接口。
+- 不负责：改项目代码、改已有设计稿/artboard、判定、改阈值；要 Paper 出图得先拿用户同意。
+- 提示词要点：写清「只写 `<run>/design/`」「颜色字号只能引用 token/现有页面，不得编造品牌色」
+  「mock 视口与档案 `devices[0]` 一致」。
 
 ### 画师（实现）
 
@@ -301,13 +395,38 @@ ui-spec 的 selector 是**实现侧契约**。页面结构变化时：
 
 ### 交接消息模板
 
+派活（队长 → 设计师，仅 `design.mode = from-scratch`）：
+
+```text
+页面：<页面名 / 路由>
+档案：<档案 id>（design：mode=from-scratch，outputs=[spec, mock] 或含 paper）
+run：<runRoot>/<页面>-r1
+设计包位置：<run>/design/
+风格来源：<tokens 文件 / 现有页面 / styleRefs / 品牌资产>
+页面范围：<要覆盖的区块、状态（loading/empty/error）、交互>
+约束：<设备档 / 不得改项目代码 / 不得编造品牌色 / 是否允许 Paper 出图>
+完成判据：design.json + ui-spec.json + mock.html + mock.png + design.md 齐全
+```
+
+交回（设计师 → 画师 / 验收者）：
+
+```text
+run：<runRoot>/<页面>-r1
+设计包：<run>/design/（design.json / ui-spec.json / mock.html / mock.png / design.md）
+视口：<宽>×<高> @<DPR>（与档案 devices[0] 一致）
+设计要点：<风格关键词；主色、字号阶梯、间距、圆角的关键取值>
+假设与未定项：<design.json → assumptions；需要谁确认>
+画师提示：<页面结构、组件清单、必须实现的交互与状态>
+验收提示：ui_diff 用 mock.png，ui_probe 用 ui-spec.json；报告设计源写「设计包（自产 mock）」
+```
+
 派活（队长 → 画师 / 验收者）：
 
 ```text
 页面：<页面名 / 路由>
 档案：<档案 id 或 JSON 路径>
 run：<runRoot>/<页面>-r1
-设计源：image → <设计图路径> | mcp → <ui-spec 路径> | none
+设计源：image → <设计图路径> | mcp → <ui-spec 路径> | design → <run>/design/（mock.png + ui-spec.json） | none
 范围：<允许改动的目录/文件清单；验收者写「只读」>
 完成判据：<合格线 / high 清零 / 规则命令通过>
 ```
@@ -317,7 +436,7 @@ run：<runRoot>/<页面>-r1
 ```text
 轮次：r2
 run：<runRoot>/<页面>-r2
-设计源：image → <设计图路径>（或 mcp → <ui-spec 路径> / none）
+设计源：image → <设计图路径>（或 mcp → <ui-spec 路径> / design → <run>/design/ / none）
 本轮变更：<文件 1>（原因）、<文件 2>（原因）
 已知取舍：<如果有，写清为什么>
 ```
@@ -361,6 +480,9 @@ api-map：<run>/api-map.json
 「设计源」写「无（规则 + 基准页 + 规范契约）」。审计探针的结论按 kind 归类，
 不要把所有 `low` 都当缺陷堵在交付前。
 
+用户要的是「你自己设计」时，走 3B 设计模式（先出设计包），不要在本节基线上加戏：
+自产的样式不能既当设计源、又当实现，那等于自己送分给自己。
+
 ## 9. 报告模板
 
 报告必须让没参与的人看懂「这次到底比了什么」。最小骨架：
@@ -368,8 +490,8 @@ api-map：<run>/api-map.json
 ```markdown
 # <页面名> UI 还原验收报告
 
-- 本次模式：有设计源（图像）/ 有设计源（结构化）/ 无素材
-- 设计源：image → <设计图路径>；mcp → <ui-spec 路径>；none → 无（规则 + 基准页 + 规范契约）
+- 本次模式：有设计源（图像）/ 有设计源（结构化）/ 无素材 / 设计模式（from-scratch，自产设计包）
+- 设计源：image → <设计图路径>；mcp → <ui-spec 路径>；design → <run>/design/mock.png + ui-spec.json（设计包，自产 mock）；none → 无（规则 + 基准页 + 规范契约）
 - 设备档：<宽>×<高> @<DPR>
 - 档案：<id>（合格线 <score>，轮次上限 <maxRounds>）
 - 轮次：r<当前>（分数曲线：0.91 → 0.95 → 0.97）
@@ -422,4 +544,4 @@ verdict：pass / needs_revision / blocked
 
 ## 11. 一句话原则
 
-**画师对「实现」负责，接线者对「数据来源」负责，验收者对「证据」负责；所有结论必须能落到 run 目录里的文件。**
+**设计师对「设计依据」负责，画师对「实现」负责，接线者对「数据来源」负责，验收者对「证据」负责；所有结论必须能落到 run 目录里的文件。**

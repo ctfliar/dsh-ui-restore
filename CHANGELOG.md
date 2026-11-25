@@ -5,6 +5,43 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-25
+
+### Added
+
+- **第 5 个预设「UI 还原-设计」**（`ui-restore-designer`，order 44）：没有 Paper 画板、设计图或参考页，
+  而用户明确要求「自主设计」时，先由设计师读项目设计体系（token 文件、同类页面、共享组件、品牌资产），
+  产出设计包 `<run>/design/`：`design.json`（色板 / 字阶 / 间距 / 圆角 / 阴影 / 组件规范 / 假设与出处）、
+  `ui-spec.json`（供 `ui_probe` 契约模式的可执行契约）、`mock.html` + `mock.png`（离线可开、可截图）、
+  `design.md`（结构、状态、响应式、可访问性、取舍）；页面要接接口时另给数据契约（字段 / 动作 / 状态）。
+  边界：只写 `<run>/design/`，不改项目页面与样式，不引入新品牌色或外部 CDN，不判 pass/fail；
+  Paper 出图（`paper.png`）仅在用户明确同意且会话里有 Paper MCP 写工具时可选，默认只出 spec + mock。
+- **档案 `design` 段**：`mode`（`reference` / `from-scratch`，默认 `reference`）、`brief`（设计简报）、
+  `styleRefs`（项目内可查的风格参照）、`outputs`（`spec` / `mock` / `paper`，默认 `spec` + `mock`）。
+  非法 `mode` 只告警并退回 `reference`；`styleRefs` 非数组告警并忽略；`outputs` 过滤非法值、空则退回默认。
+- **SKILL 第 3B 节「设计模式」**与**第 4B 节「设计阶段」**：写明什么时候才走 `from-scratch`、先读项目风格、
+  设计包清单、Paper 可选出图的两条前提、设计模式与 3A「验收流程禁用 Paper 写类工具」的边界，
+  并补齐队长 → 设计师、设计师 → 画师/验收者的交接模板；第 7 节角色说明扩为五个（新增设计师）。
+- **判定口径新增「设计层」门槛**：`from-scratch` 时设计包齐全（`design.json` / `ui-spec.json` /
+  `mock.png` / `design.md`）、画师实现与 `mock.png` 达标、mock 与实现同设备档，且报告如实写
+  「设计源 = 设计包（自产 mock）」，不得说成客户设计稿或 Paper 出图。
+- 文档与自测同步：README（能力表 / 预设表 / 设计源表）、`docs/USAGE.md`（§3.5 无参考自主设计、设计阶段
+  D1~D4 动作序列、档案示例）、`docs/INSTALL.md`（五个预设）、`docs/teams-integration.md`（子角色与设计任务链）；
+  selftest 增加 `design` 段默认值与非法值告警用例。
+
+### Changed
+
+- 队长预设：职责增加「`design.mode = from-scratch` 时先派设计师、设计包确认后再派画师」，
+  `allowedAgentPresets` 增加 `ui-restore-designer`；子角色固定为「设计 / 画师 / 接线者 / 验收者」。
+- 插件内「四个 Agent 预设」的统一表述改为五个；设计源表述从四种改为五种（新增设计模式）。
+
+### Compatibility
+
+- **旧用法不受影响**：既有预设 id（`ui-restore` / `-painter` / `-verifier` / `-integrator`）与档案字段不变；
+  档案不写 `design` 段时 `design.mode = reference`，Paper 直读 / 设计图 / 线上参考页 / 无素材四条既有路径行为不变。
+- 设计模式是**新增形态**，只有显式 `from-scratch` 才启用：无设计源但用户没要求自主设计时，仍走第 8 节无素材模式，
+  不会自动变成「先自己设计再验自己」。
+
 ## [0.2.0] - 2026-11-23
 
 ### Added

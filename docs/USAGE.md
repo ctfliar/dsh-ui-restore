@@ -9,7 +9,9 @@
 2. 新会话的预设选 **「UI 还原-队长」**（`ui-restore`）；没有预设列表时用默认预设，直接按
    `skills/ui-restore/SKILL.md` 开工；
 3. 在项目里建一份档案：`<工作区>/ui-restore-profiles/<id>.json`（示例见第 2 节）；
-4. 告诉队长：要还原的页面/路由、项目档案 id、允许改动的目录。剩下按闭环推进。
+4. 要**无参考自主设计**（没有设计稿，让 agent 先设计再实现）：先让队长派 **「UI 还原-设计」**
+   （`ui-restore-designer`）出设计包，并把档案 `design.mode` 写成 `"from-scratch"`（见 3.5 节）；
+5. 告诉队长：要还原的页面/路由、项目档案 id、允许改动的目录。剩下按闭环推进。
 
 最小验证（不需要浏览器）：
 
@@ -44,6 +46,12 @@ node scripts/selftest.mjs
     "artboard": "订单列表 / 桌面档",
     "note": "从 Paper 直读生成 ui-spec；截图只做渲染兜底"
   },
+  "design": {
+    "mode": "reference",
+    "brief": "",
+    "styleRefs": [],
+    "outputs": ["spec", "mock"]
+  },
   "api": {
     "source": "project",
     "env": "test",
@@ -56,18 +64,35 @@ node scripts/selftest.mjs
 }
 ```
 
+无参考、要设计师自主设计时：`designSource.kind` 保持 `"none"`（不会同时有 Paper/设计图），把 `design` 段改成：
+
+```json
+{
+  "design": {
+    "mode": "from-scratch",
+    "brief": "订单列表页：顶部筛选栏 + 高密度表格 + 批量操作，含 loading/empty/error",
+    "styleRefs": ["src/views/dashboard/index.vue", "src/styles/tokens.css"],
+    "outputs": ["spec", "mock"]
+  }
+}
+```
+
 要点：
 
 - `devices[0]` 是截图/探针的缺省视口；移动端页面把手机档放第一位。
 - `thresholds.score` 是还原度合格线；`ui_diff` 的默认允许差异率 = `1 - score`。
 - `rules[].required = true` 的命令由画师/接线者/验收者在各自会话里跑；规则不过不进截图环节。
 - `designSource.kind` 只能是 `none` / `image` / `mcp`；非法值直接报错。
+- `design.mode` 默认 `reference`（有设计源，或走无素材模式）；只有用户明确要求「没有设计稿，你来设计」
+  时才写 `from-scratch`。`brief` 写页面目标与关键区块，`styleRefs` 只放可读路径/URL，
+  `outputs` 取 `spec` / `mock`（可加 `paper`：表示用户同意由 Paper 出图，且会话里得有 Paper 写工具）。
+  设计师的产出落 `<run>/design/`；**不得编造品牌色**，新增取值写进 `design.json` 的 `assumptions`。
 - `api` 是交给接线者与验收者的接线约定：`source` 取 `project` / `openapi` / `capture` / `none`，
   `env` 取 `test` / `prod-readonly`，`allow` 是允许访问的 host/path 前缀，`authEnv` 只写环境变量名。
   插件不联网、不读凭据；只做视觉还原时留默认值即可。
 - 未知字段只告警、不报错，方便先跑通再补。
 
-## 3. 四种设计源
+## 3. 五种设计源
 
 ### 3.1 Paper 直读（主路径，不需要截图）
 
@@ -112,7 +137,56 @@ node scripts/selftest.mjs
 3. 审计探针：`ui_probe` 审计模式检查溢出、硬编码色、字号/间距分布、缺 alt、焦点、空态；
 4. 规范契约：把设计规范写成 ui-spec（字号、主色、控件高度、圆角等），走契约模式。
 
+### 3.5 无参考：设计师自主设计（`design.mode = "from-scratch"`）
+
+没有设计稿、也没有可对标的参考页，但用户明确要求「你来设计」时，用设计模式——
+**先出设计包，再照着设计包实现与验收**。它和 3.4 无素材模式的区别：3.4 不产出新设计，
+3.5 会产出一套自产的设计依据。
+
+前提：用户明确同意自主设计，并且档案里写 `design.mode = "from-scratch"`（默认 `reference`，
+谁都不许私自改成 `from-scratch` 来「补一个设计源」）。流程：
+
+1. **队长派设计师**：「UI 还原-设计」（`ui-restore-designer`）。交接 `design` 段、页面范围、
+   真实数据形态、风格参考与 run 目录。
+2. **设计师先读项目风格**：`tokens.files` 的 token 文件、现有页面里的同类组件、品牌资产
+   （logo/品牌色/字体）、`design.styleRefs` 给的参考。**颜色字号只能引用现成取值，不得编造品牌色**；
+   确需新增就写进 `design.json` 的 `assumptions` 并在 `design.md` 标「待确认」。
+3. **设计师产出设计包**，全部落 `<run>/design/`，不写进项目源码目录：
+
+   | 产物 | 内容 |
+   | --- | --- |
+   | `design.json` | 风格档案：色彩、字号阶梯、间距刻度、圆角/阴影、组件清单、假设 |
+   | `ui-spec.json` | 机器可读样式契约（selector + 属性期望值），schema 同插件 `schemas/ui-spec.schema.json` |
+   | `mock.html` | 可截图的自包含静态 mock（单文件、内联样式、无外链、无脚本） |
+   | `mock.png` | mock 整屏截图，视口与 DPR 和档案 `devices[0]` 一致 |
+   | `design.md` | 人读版说明：页面结构、状态、交互、假设与未定项 |
+   | `paper.png`（可选） | 用户同意 + 会话有 Paper 写工具时，由 Paper 出图的画板截图 |
+
+   页面要连真实接口时，设计师另给一份数据契约（写进 `design.md` 或单独的 `api-requirements.json`）：
+   需要哪些字段、动作与状态（loading / empty / error / 分页 / 重试）。只写需求，不编造接口路径与响应；
+   接线者按这份契约接接口，接口来源仍以档案 `api` 段为准。
+
+4. **确认后冻结设计**：用户/队长确认一轮即可；之后只改实现，不改设计包。要改风格必须显式说明。
+5. **画师实现**：`mock.png` 是像素基准，`ui-spec.json` 是属性契约；selector 映射由画师声明。
+6. **验收者按同一套设计包判定**：`ui_diff({ design: "<run>/design/mock.png", shot })`、
+   `ui_probe({ expected: "<run>/design/ui-spec.json" })`；报告「设计源」写「设计包（自产 mock）」。
+
+Paper 出图是可选项：**用户明确同意 + 会话里有 Paper MCP 写工具**两条都满足才做，否则只出
+`mock.html` + `mock.png` + `ui-spec.json`，并在报告里写清没有 Paper 出图。
+Paper 写类工具在普通验收流程里仍然禁用（见 3.1），设计模式只是允许「新建设计产物」这一次写操作。
+
 ## 4. 一轮闭环的动作序列
+
+页面没有设计稿、走设计模式时，先在实现前加一个设计阶段（设计包冻结后再进下面的主表）：
+
+| 步骤 | 谁 | 动作 | 产物 |
+| --- | --- | --- | --- |
+| D1 | 队长 | 确认 `design.mode = from-scratch`，派设计师（交接 brief / styleRefs / outputs / 页面范围） | 交接消息 |
+| D2 | 设计师 | 读项目风格 → 写 `design.json` → 出 `mock.html`/`mock.png` → 抽 `ui-spec.json` → 写 `design.md` | `<run>/design/` 设计包 |
+| D3 | 画师 | 按 `mock.png`（像素）与 `ui-spec.json`（属性）实现，声明 selector 映射 | 页面代码 |
+| D4 | 验收者 | `ui_diff` 对 `mock.png`、`ui_probe` 对 `ui-spec.json`，按「设计层」门槛判定 | verdict + 报告 |
+
+设计包冻结后，按主表推进：
 
 | 步骤 | 谁 | 动作 | 产物 |
 | --- | --- | --- | --- |
@@ -143,6 +217,8 @@ node scripts/selftest.mjs
 - `score`：还原度（1 - 差异率）合格线，默认 0.95；`ui_diff` 的 `threshold = 1 - score`。
 - `maxRounds`：允许的最大轮次，默认 3；由队长执行，插件只透出。
 - 判定硬门槛：合格线达标 + 探针 high 归零 + selector miss 已补齐/说明 + 高严重度差异区域逐项对照。
+- 设计层门槛（仅 `design.mode = from-scratch`）：设计包齐全（`design.json` / `ui-spec.json` /
+  `mock.png` / `design.md`）、实现与 `mock.png` 达标、mock 与实现同设备档、报告如实写「设计源 = 设计包」。
 - 收敛即停；连续两轮提升很小或超过 `maxRounds` 视为停滞，剩余差异分「必改 / 可接受 / 需产品确认」
   交人决策。
 
@@ -171,6 +247,7 @@ node scripts/selftest.mjs
 | 差异区域很碎 | 页面有整体位移（padding 改动等）时会出现多条细区域；按面积与 severity 排序看 |
 | `selectorMisses` 不为 0 | 让画师更新 selector 或给映射说明，不要留给验收者猜 |
 | 有 Paper 但不知道选哪个 artboard | `get_basic_info` 列出 `artboards`；按名称/宽高选，记录 id |
+| 没有设计稿，能不能直接开做 | 用户要求自主设计时走设计模式（3.5）：先出设计包再实现；只是不需要新设计时走 3.4 无素材，别自己画完顺手当设计源 |
 | Paper 的 `get_tokens` 返回 `[]` | 正常；只写节点级样式，不要因此改走截图 |
 | 浏览器起不来（`spawn EPERM`） | 受限沙箱禁止起子进程；换非受限会话，或只跑核心集自测 |
 | 报告图片打不开 | 报告与三张图必须在同一目录；`ui_report` 默认会把外部图片复制进报告目录 |

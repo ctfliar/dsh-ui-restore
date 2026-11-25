@@ -1249,6 +1249,52 @@ async function coreSuite() {
     assert(warnings.some((warning) => warning.includes('api.allow')), 'api.allow 告警');
   });
 
+  await test('项目档案 design 段：默认 reference；from-scratch 原样生效；非法值告警回退', () => {
+    const sparse = normalizeProfile({ id: 'sparse' });
+    assertEqual(sparse.profile.design.mode, 'reference', '缺省 design.mode');
+    assertEqual(sparse.profile.design.brief, '', '缺省 design.brief');
+    assertEqual(sparse.profile.design.styleRefs.length, 0, '缺省 design.styleRefs');
+    assertEqual(JSON.stringify(sparse.profile.design.outputs), JSON.stringify(['spec', 'mock']), '缺省 design.outputs');
+    assertEqual(sparse.warnings.length, 0, '缺省 design 段不应告警');
+
+    const configured = normalizeProfile({
+      id: 'designed',
+      design: {
+        mode: 'from-scratch',
+        brief: '给运营做一个活动落地页，风格跟随现有后台',
+        styleRefs: ['src/views/a.vue', 'src/components/PageHeader.vue'],
+        outputs: ['mock', 'paper'],
+      },
+    });
+    assertEqual(configured.profile.design.mode, 'from-scratch', 'design.mode 生效');
+    assertEqual(configured.profile.design.brief, '给运营做一个活动落地页，风格跟随现有后台', 'design.brief 生效');
+    assertEqual(JSON.stringify(configured.profile.design.styleRefs), JSON.stringify(['src/views/a.vue', 'src/components/PageHeader.vue']), 'design.styleRefs 生效');
+    assertEqual(JSON.stringify(configured.profile.design.outputs), JSON.stringify(['mock', 'paper']), 'design.outputs 生效');
+    assertEqual(configured.warnings.length, 0, '合法 design 段不应告警');
+
+    const warnings = [];
+    const bad = normalizeProfile({
+      id: 'bad',
+      design: { mode: 'creative', styleRefs: 'src/views/a.vue', outputs: ['spec', 'diorama'] },
+    }, { warnings });
+    assertEqual(bad.profile.design.mode, 'reference', '非法 design.mode 退回 reference');
+    assertEqual(bad.profile.design.styleRefs.length, 0, '非数组 design.styleRefs 被忽略');
+    assertEqual(JSON.stringify(bad.profile.design.outputs), JSON.stringify(['spec']), 'design.outputs 非法值被过滤');
+    assert(warnings.some((warning) => warning.includes('design.mode')), 'design.mode 告警');
+    assert(warnings.some((warning) => warning.includes('design.styleRefs')), 'design.styleRefs 告警');
+    assert(warnings.some((warning) => warning.includes('design.outputs')), 'design.outputs 告警');
+
+    const nonArrayWarnings = [];
+    const nonArray = normalizeProfile({ id: 'bad-non-array', design: { outputs: 'paper' } }, { warnings: nonArrayWarnings });
+    assertEqual(JSON.stringify(nonArray.profile.design.outputs), JSON.stringify(['spec', 'mock']), '非数组 design.outputs 回默认 spec + mock');
+    assert(nonArrayWarnings.some((warning) => warning.includes('design.outputs')), '非数组 design.outputs 告警');
+
+    const emptyWarnings = [];
+    const empty = normalizeProfile({ id: 'bad-empty', design: { outputs: ['diorama'] } }, { warnings: emptyWarnings });
+    assertEqual(JSON.stringify(empty.profile.design.outputs), JSON.stringify(['spec', 'mock']), '全非法 design.outputs 回默认 spec + mock');
+    assert(emptyWarnings.some((warning) => warning.includes('design.outputs')), '全非法 design.outputs 告警');
+  });
+
   await test('探针页面采集函数语法自检 + 不引用模块作用域变量', () => {
     const sources = auditExpressionSource();
     assertEqual(sources.length, 2, '应导出两个页面采集函数');

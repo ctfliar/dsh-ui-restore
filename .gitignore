@@ -8,3 +8,4 @@ Thumbs.db
 output/
 runs/
 *.tmp
+.agent-teams/

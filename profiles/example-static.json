@@ -16,6 +16,12 @@
     "path": "design/home.png",
     "note": "把设计图放进项目后改名；没有设计图时把 kind 改成 none"
   },
+  "design": {
+    "mode": "reference",
+    "brief": "",
+    "styleRefs": [],
+    "outputs": ["spec", "mock"]
+  },
   "api": {
     "source": "none",
     "env": "test",

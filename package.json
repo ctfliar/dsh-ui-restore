@@ -1,6 +1,6 @@
 {
   "name": "dsh-ui-restore",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "UI restoration closed loop for DeepSeek Harness: screenshot capture, canvas-aligned pixel diff, computed-style probes, and a static acceptance report (Markdown + single-file HTML).",
   "type": "module",
   "main": "lib/index.js",

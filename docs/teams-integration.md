@@ -5,7 +5,7 @@
 **本插件不依赖任何团队/任务板能力。** 插件只提供四个工具，产物是 run 目录里的文件；
 谁来回合、谁派活、任务状态记在哪，都由使用者决定。
 
-- 没有团队任务板：用 DeepSeek Harness 基线的 subagent + 四个预设，串行闭环即可跑完。
+- 没有团队任务板：用 DeepSeek Harness 基线的 subagent + 五个预设，串行闭环即可跑完。
 - 有团队任务板：可以并行多个页面、把轮次变成可审计的任务，但**插件本身一行代码都不改**。
 
 ## 1. 为什么不做硬依赖
@@ -13,7 +13,7 @@
 1. **产物已经是契约**：截图、`diff.json`、`probe.json`、`report.md/html` 都在 run 目录里，
    任何编排方式只要会读文件就能接力，不需要插件知道调度器的存在。
 2. **基线已经够用**：`dsh-tool-subagent` 的 `agentPreset` / `allowedAgentPresets` 就能固定
-   「画师 / 接线者 / 验收者」三个子角色（本插件的四个预设已经这样声明）。
+   「设计 / 画师 / 接线者 / 验收者」四个子角色（本插件的五个预设已经这样声明）。
 3. **团队能力是第三方实现**：不同团队插件的包名、工具名、任务模型都不一样；
    写死任何一个包名，都会让没装它的用户在激活预设时直接失败。
 4. **失败面可控**：任务板不可用时，降级成串行即可；硬依赖会把「可选增强」变成「装不上就废」。
@@ -28,6 +28,7 @@
 ```
 用户 / 队长
   ├─ 建档案、定模式、准备 run 目录
+  ├─ design.mode=from-scratch 时先派设计师（agent_preset=ui-restore-designer）→ 设计包
   ├─ subagent（agent_preset=ui-restore-painter）→ 实现 + 截图 + 规则门禁
   ├─ subagent（agent_preset=ui-restore-verifier）→ 探针 + 差异 + 判定
   │     └─ needs_revision → 回到画师（同一 run 目录）
@@ -48,6 +49,9 @@
 页面 B：draw(B,r1) → verify(B,r1) → report(B)        ← 与 A 并行
 ```
 
+无参考自主设计（`design.mode=from-scratch`）时，前面多一条 `design(A)` 任务：设计包产出并确认后，
+才解锁 `draw(A,r1)`；验收任务用同一份设计包（`mock.png` + `ui-spec.json`）判定。
+
 两种常见拆法，二选一：
 
 | 拆法 | 任务粒度 | 适合 |
@@ -61,7 +65,7 @@
 页面：<页面名 / 路由>
 档案：<档案 id 或 JSON 路径>
 run：<runRoot>/<页面>-r<轮次>
-设计源：image → <设计图路径> | mcp → <ui-spec 路径> | none
+设计源：image → <设计图路径> | mcp → <ui-spec 路径> | design → <run>/design/（mock.png + ui-spec.json） | none
 范围：<允许改动的目录/文件>
 上一轮结论：<findings 摘要或「首轮」>
 完成判据：<合格线 / high 清零 / 规则命令通过>
