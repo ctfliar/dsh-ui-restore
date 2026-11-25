@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **设计评审门**（`design.mode = from-scratch`）：设计师交付设计包后、画师动工前，验收者只读评审
+  **设计包本身**——齐全性、`ui-spec` 对 `mock.html` 可执行且 `selectorMisses = 0`、loading/empty/error、
+  可访问性（对比度/焦点/标签/alt）、品牌色与 `assumptions`、示意数据自洽、`mock.png` 与 `devices[0]`
+  同视口且无横向溢出；结论写 `<run>/review/design-review.json`（`verdict` + `findings[]`，≤3 条关键项）。
+  `pass` 才派画师，`needs_revision` 回设计师改一版后复审，`blocked` 找用户确认；
+  **评审不过不得开始实现**。无图像输入时用结构化证据并声明「图像未人眼复核」。
+- SKILL 4B 新增「设计评审」步骤、第 5 节新增「设计评审层」门槛、第 7 节角色与交接模板同步；
+  队长 / 设计 / 验收三个预设 persona 同步（队长先派验收者评审，通过后才派画师；设计师按 findings 改包）；
+  README / USAGE / teams-integration 同步；selftest 增加「设计评审门」一致性用例。
+
 ## [0.3.0] - 2026-11-25
 
 ### Added

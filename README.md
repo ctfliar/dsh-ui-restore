@@ -55,9 +55,9 @@ plugin_manager { "action": "install_bundle", "target": "<包目录绝对路径>"
 | --- | --- | --- | --- |
 | `ui-restore`（队长） | 40 | persona + `tool-fs` + `tool-subagent` | 建档案、探能力、定设计模式、派活、收敛判定、交付报告 |
 | `ui-restore-painter`（画师） | 41 | persona + `tool-fs`（读写） + shell | 在 inScope 内实现页面、跑 rules、自看截图、声明 selector 映射 |
-| `ui-restore-verifier`（验收） | 42 | persona + `tool-fs`（只读） + shell | 跑 rules 门禁（只跑不改）、截图、探针、差异、判定、报告 |
+| `ui-restore-verifier`（验收） | 42 | persona + `tool-fs`（只读） + shell | 跑 rules 门禁（只跑不改）、**from-scratch 时先做设计评审**、截图、探针、差异、判定、报告 |
 | `ui-restore-integrator`（接线） | 43 | persona + `tool-fs`（读写） + shell | 把页面数据层接到真实接口、产出 `api-map.json`、覆盖 loading/empty/error/分页/重试 |
-| `ui-restore-designer`（设计） | 44 | persona + `tool-fs`（读写，限定 `<run>/design/`） + shell | 无参考时自主设计：读项目风格 → 产出设计包（`design.json` / `ui-spec.json` / `mock.html` / `mock.png` / `design.md`，Paper 出图可选） |
+| `ui-restore-designer`（设计） | 44 | persona + `tool-fs`（读写，限定 `<run>/design/`） + shell | 无参考时自主设计：读项目风格 → 产出设计包（`design.json` / `ui-spec.json` / `mock.html` / `mock.png` / `design.md`，Paper 出图可选）；设计包需过验收者的设计评审才能进入实现 |
 
 验收者 fs 保持只读（`write`/`edit`/`applyPatch` 全关）；shell 只用于跑 rules 命令。
 接线者只有 fs（读写）+ shell，不装浏览器，不判 UI。
@@ -73,7 +73,11 @@ plugin_manager { "action": "install_bundle", "target": "<包目录绝对路径>"
 | 设计图 | `image` | `ui_diff` 像素比对 | [docs/design-sources.md](docs/design-sources.md) |
 | 线上 / 参考页（当基准） | `none` + `baseline.pages` | `ui_diff` 对齐基准图 | [docs/USAGE.md](docs/USAGE.md) §3.3 |
 | 无素材 | `none` | rules + 审计探针 + 三同基准页 | [docs/USAGE.md](docs/USAGE.md) §3.4 |
-| 设计模式（无参考，自主设计） | `design.mode = "from-scratch"` | `ui_probe` 契约 + `ui_diff` 对自产 `mock.png` | [docs/USAGE.md](docs/USAGE.md) §3.5 |
+| 设计模式（无参考，自主设计） | `design.mode = "from-scratch"` | 先过设计评审，再用 `ui_probe` 契约 + `ui_diff` 对自产 `mock.png` | [docs/USAGE.md](docs/USAGE.md) §3.5 |
+
+**设计评审门**：`from-scratch` 时，设计师交付后先由验收者只读评审设计包本身（齐全性、契约可执行、
+三态、可访问性、品牌色、数据自洽、mock 渲染），结论写 `<run>/review/design-review.json`；
+`verdict = pass` 才派画师，`needs_revision` 回设计师改一版，`blocked` 找用户确认。评审不过不得开始实现。
 
 插件本身**不连接任何 MCP**：设计源由使用者挂载（例如 Paper MCP），插件只读本地生成的 ui-spec / PNG。
 

@@ -49,8 +49,9 @@
 页面 B：draw(B,r1) → verify(B,r1) → report(B)        ← 与 A 并行
 ```
 
-无参考自主设计（`design.mode=from-scratch`）时，前面多一条 `design(A)` 任务：设计包产出并确认后，
-才解锁 `draw(A,r1)`；验收任务用同一份设计包（`mock.png` + `ui-spec.json`）判定。
+无参考自主设计（`design.mode=from-scratch`）时，前面多两条任务：`design(A)` → `review-design(A)`。
+设计评审 `pass` 后才解锁 `draw(A,r1)`；验收任务用同一份设计包（`mock.png` + `ui-spec.json`）判定，
+评审结论（`<run>/review/design-review.json`）也作为验收依据之一。
 
 两种常见拆法，二选一：
 
@@ -66,6 +67,7 @@
 档案：<档案 id 或 JSON 路径>
 run：<runRoot>/<页面>-r<轮次>
 设计源：image → <设计图路径> | mcp → <ui-spec 路径> | design → <run>/design/（mock.png + ui-spec.json） | none
+设计评审：<run>/review/design-review.json（from-scratch 时必填，verdict 必须是 pass 才开工）
 范围：<允许改动的目录/文件>
 上一轮结论：<findings 摘要或「首轮」>
 完成判据：<合格线 / high 清零 / 规则命令通过>

@@ -275,8 +275,8 @@ api-map 最小形状：
 
 ## 4B. 设计阶段（设计师，仅当 `design.mode = from-scratch`）
 
-顺序固定：**队长派设计师 → 设计师出设计包 → 画师按设计包实现 → 验收者按同一套设计包判定。**
-设计阶段只在页面实现之前跑一次；设计冻结后不要每轮重画。
+顺序固定：**队长派设计师 → 设计师出设计包 → 用户/队长确认 → 验收者独立设计评审 → 画师按设计包实现 → 验收者按同一套设计包判定。**
+设计阶段只在页面实现之前跑一次；设计评审通过后设计冻结，不要每轮重画。
 
 1. **队长派设计师**：交接 `design` 段、页面范围、真实数据形态（条数/字段）、风格参考与 run 目录。
    没写 `from-scratch` 就不要派设计师。
@@ -285,16 +285,32 @@ api-map 最小形状：
    `design.md` 写清结构、状态与假设。
 3. **用户/队长确认设计包**：一轮确认即可，不要反复改风格。确认后设计冻结——后面只改实现，不改设计包；
    要改风格必须显式回到这一步并说明原因。
-4. **画师按设计包实现**：`mock.png` 是像素基准、`ui-spec.json` 是属性契约；selector 映射由画师声明
+4. **验收者独立设计评审（必做门）**：画师动工之前，验收者只读评审**设计包本身**，结论写成
+   `<run>/review/design-review.json`（人读版 `<run>/review/design-review.md`）：
+   - 清单齐全：`design.json` / `ui-spec.json` / `mock.html` / `mock.png` / `design.md`；
+   - 契约可执行：`ui_probe(expected=ui-spec)` 对 `mock.html` 跑通，`selectorMisses = 0`，
+     且 ui-spec 覆盖到主结构（标题、筛选、主列表/卡片、分页、状态区）；
+   - 状态覆盖：loading / empty / error 有明确触发条件与视觉表现；
+   - 可访问性：文本对比度、焦点可见、表单有标签、图片有 alt；
+   - 品牌一致性：颜色/字号/间距来自 token 或现有页面；新增值必须在 `assumptions` 里说明，
+     不得出现未声明的品牌色；
+   - 数据自洽：示意数据（条数/分页/统计）前后一致，数据契约字段/动作/状态齐全；
+   - 渲染兜底：`mock.png` 与 `devices[0]` 同视口、非空白、无横向溢出（`ui_probe` 审计模式或结构化校验）。
+   评审 verdict 只允许 `pass` / `needs_revision` / `blocked`：`needs_revision` 回设计师改一版设计包
+   （findings 只给 1~3 条关键项，改完重新评审）；`blocked` 找用户确认取舍。
+   **评审不通过不得派画师**——不许边实现边改设计；评审者不得改设计包，只写评审产物。
+   模型没有图像输入时，评审用结构化证据（契约/审计/像素结构），并在结论里写明
+   「图像未人眼复核」；有图像输入时再看 `mock.png`。
+5. **画师按设计包实现**：`mock.png` 是像素基准、`ui-spec.json` 是属性契约；selector 映射由画师声明
    （见第 7 节）。设计包是参照物，**不要把它搬进项目源码**，也不要为对上 mock 写死像素。
-5. **验收者按同一套设计包判定**：
+6. **验收者按同一套设计包判定**：
    `ui_diff({ design: "<run>/design/mock.png", shot: "<run>/shot.png" })` +
    `ui_probe({ expected: "<run>/design/ui-spec.json" })`；报告「设计源」写
    「设计包（自产 mock，见 `design.md`）」，不要写成外部设计稿或 Paper 产物。
-6. **视口必须一致**：mock 与实现同设备档（同宽高、同 DPR）；不一致时 `sizeMismatch` 会让差异全是
+7. **视口必须一致**：mock 与实现同设备档（同宽高、同 DPR）；不一致时 `sizeMismatch` 会让差异全是
    缩放噪声，先对齐视口再谈分数。
 
-交接消息模板见第 7 节（队长 → 设计师、设计师 → 画师/验收者）。
+交接消息模板见第 7 节（队长 → 设计师、队长 → 验收者〔设计评审〕、设计师 → 画师/验收者）。
 
 ## 5. 判定口径（verdict 与 findings）
 
@@ -309,6 +325,7 @@ api-map 最小形状：
 | 规则层 | 档案里 `required: true` 的命令全部通过 |
 | 接口层 | 页面要连真实接口时：`<run>/api-map.json` 存在、页面没有 mock 假数据冒充、loading/empty/error/分页/重试覆盖、请求入参与 api-map 一致；`api.env = prod-readonly` 时只允许 GET |
 | 设计层 | `design.mode = from-scratch` 时：设计包齐全（`<run>/design/design.json`、`ui-spec.json`、`mock.png`、`design.md`，`design.md` 写清假设与未定项）；画师实现与 `mock.png` 的 `score` ≥ 档案合格线；mock 与实现同设备档（`sizeMismatch.mismatch = false`）；报告如实写「设计源 = 设计包（自产 mock）」 |
+| 设计评审层 | `design.mode = from-scratch` 时：`<run>/review/design-review.json` 存在且 `verdict = pass`，评审 findings 已闭环（`needs_revision` 项有修复或写明理由）；画师不得在评审通过前动工；报告写清评审结论与「图像是否人眼复核」 |
 | 模式一致性 | 报告写清「本次模式 / 设计源」；无设计源时不得声称「与设计稿一致」；设计模式下不得把自产 mock 说成客户设计稿或 Paper 出图 |
 
 `findings[]` 每条至少包含：
@@ -355,6 +372,8 @@ api-map 最小形状：
 ### 队长（编排）
 
 - 负责：建档案、定模式（含是否 `design.mode = from-scratch`）、派活、收敛判定、交付报告。
+- 设计先行：`from-scratch` 时设计师交付后**先派验收者做设计评审**，`verdict = pass` 才派画师；
+  `needs_revision` 回设计师改一版，`blocked` 找用户确认——评审通过前不派实现。
 - 不负责：写页面代码、改验收口径、替设计师编风格。
 - 提示词要点：明确「你的交付物是证据与结论，不是代码」；要求每轮只给 1~3 条修复项。
 
@@ -363,6 +382,8 @@ api-map 最小形状：
 - 负责：`design.mode = from-scratch` 时产出设计包（`<run>/design/` 下 `design.json` / `ui-spec.json` /
   `mock.html` / `mock.png` / `design.md`，Paper 出图时另加 `paper.png`）；先读项目风格再定稿；把假设写清；
   页面要接接口时给出数据契约（字段/动作/状态），只写需求不编造接口。
+- 交回后等验收者的设计评审：`needs_revision` 时只改设计包、按 findings 改 1~3 条关键项后交回复审；
+  不自行宣称设计通过，不越过评审进入实现。
 - 不负责：改项目代码、改已有设计稿/artboard、判定、改阈值；要 Paper 出图得先拿用户同意。
 - 提示词要点：写清「只写 `<run>/design/`」「颜色字号只能引用 token/现有页面，不得编造品牌色」
   「mock 视口与档案 `devices[0]` 一致」。
@@ -376,8 +397,12 @@ api-map 最小形状：
 ### 验收者（只读）
 
 - 负责：跑档案 `rules` 命令做独立门禁（只跑不改）、截图、探针、差异、判定、报告。
+- 设计评审（仅 `from-scratch`）：画师动工前先评设计包本身——齐全性、ui-spec 契约可执行、
+  loading/empty/error、可访问性、品牌色与 assumptions、数据自洽、mock 渲染结构；
+  结论写 `<run>/review/design-review.json`（`verdict` + `findings[]`），只读设计包、不改设计值。
 - 不负责：改代码、改 ui-spec、改阈值、把失败项标成「已知问题」。
-- 提示词要点：写清「没有证据不下结论」「不改任何项目文件」。
+- 提示词要点：写清「没有证据不下结论」「不改任何项目文件」；无图像输入时用结构化证据并声明
+  「图像未人眼复核」。
 
 ### 接线者（接口对接）
 
@@ -418,6 +443,30 @@ run：<runRoot>/<页面>-r1
 假设与未定项：<design.json → assumptions；需要谁确认>
 画师提示：<页面结构、组件清单、必须实现的交互与状态>
 验收提示：ui_diff 用 mock.png，ui_probe 用 ui-spec.json；报告设计源写「设计包（自产 mock）」
+```
+
+派活（队长 → 验收者，设计评审门，仅 `from-scratch`）：
+
+```text
+页面：<页面名 / 路由>
+档案：<档案 id>（design：mode=from-scratch）
+run：<runRoot>/<页面>-r1
+评审对象：<run>/design/ 设计包（design.json / ui-spec.json / mock.html / mock.png / design.md）
+评审重点：齐全性 / ui-spec 对 mock.html 可执行且 selectorMisses=0 / loading-empty-error /
+          可访问性 / 品牌色与 assumptions / 数据自洽 / mock 视口与无横向溢出
+产物：<run>/review/design-review.json（verdict + findings，最多 3 条关键项）+ design-review.md
+约束：只读设计包，不改设计值、不改 ui-spec、不进入实现
+完成判据：verdict = pass | needs_revision | blocked；能指向具体文件与数值
+```
+
+交回（验收者 → 设计师 / 队长，设计评审结论）：
+
+```text
+run：<runRoot>/<页面>-r1
+verdict：pass | needs_revision | blocked
+findings：<id / severity / 项 / expected / actual / evidence（文件:行 或 json 路径）>
+图像复核：<有图像输入：已看 mock.png | 无图像输入：未人眼复核，采用结构化证据>
+下一步：<pass → 冻结设计、派画师 | needs_revision → 设计师改一版后复审 | blocked → 用户确认取舍>
 ```
 
 派活（队长 → 画师 / 验收者）：

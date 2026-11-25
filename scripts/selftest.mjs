@@ -926,6 +926,22 @@ async function coreSuite() {
     assert(captured.skill?.content.includes('# SKILL'), '注册正文应来自包内 SKILL.md');
   });
 
+  await test('设计评审门：SKILL / 三个预设 persona / 文档一致声明评审阶段', () => {
+    const skill = readBundledSkill();
+    for (const marker of ['设计评审', '设计评审层', 'review/design-review.json', 'needs_revision']) {
+      assert(skill.content.includes(marker), `SKILL 应包含「${marker}」`);
+    }
+    const patch = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8');
+    for (const marker of ['design-review.json', '设计评审', 'needs_revision']) {
+      assert(patch.includes(marker), `cordis.patch.yml 应包含「${marker}」`);
+    }
+    const reviewMentions = (patch.match(/设计评审/g) ?? []).length;
+    assert(reviewMentions >= 3, `队长/设计/验收三个 persona 都应声明设计评审，实际 ${reviewMentions} 处`);
+    const usage = readFileSync(join(ROOT, 'docs/USAGE.md'), 'utf8');
+    assert(usage.includes('design-review.json'), 'USAGE 应说明设计评审产物');
+    assert(skill.content.includes('pass') && skill.content.includes('评审不通过不得派画师'), 'SKILL 应写明评审不通过不得派画师');
+  });
+
   // ---- Paper 直读（离线夹具，不依赖网络） --------------------------------
 
   // 真实 Paper 的 tools/call 返回两段 text block：block0 是上下文头，block1 才是业务载荷。

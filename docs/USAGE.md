@@ -166,9 +166,15 @@ node scripts/selftest.mjs
    需要哪些字段、动作与状态（loading / empty / error / 分页 / 重试）。只写需求，不编造接口路径与响应；
    接线者按这份契约接接口，接口来源仍以档案 `api` 段为准。
 
-4. **确认后冻结设计**：用户/队长确认一轮即可；之后只改实现，不改设计包。要改风格必须显式说明。
-5. **画师实现**：`mock.png` 是像素基准，`ui-spec.json` 是属性契约；selector 映射由画师声明。
-6. **验收者按同一套设计包判定**：`ui_diff({ design: "<run>/design/mock.png", shot })`、
+4. **验收者独立设计评审（必做门）**：画师动工前，验收者只读评审设计包——清单齐全、ui-spec 对
+   `mock.html` 可执行且 `selectorMisses = 0`、loading/empty/error 有触发与表现、可访问性
+   （对比度/焦点/标签/alt）、颜色字号来自 token 或 `assumptions` 已声明、示意数据自洽、
+   `mock.png` 与 `devices[0]` 同视口且无横向溢出。结论写 `<run>/review/design-review.json`
+   （`verdict` + `findings[]`，最多 3 条关键项）：`pass` 才冻结设计并派画师，`needs_revision`
+   回设计师改一版后复审，`blocked` 找用户确认。**评审不通过不得开始实现。**
+5. **确认后冻结设计**：评审 `pass` 即冻结；之后只改实现，不改设计包。要改风格必须显式说明并重新评审。
+6. **画师实现**：`mock.png` 是像素基准，`ui-spec.json` 是属性契约；selector 映射由画师声明。
+7. **验收者按同一套设计包判定**：`ui_diff({ design: "<run>/design/mock.png", shot })`、
    `ui_probe({ expected: "<run>/design/ui-spec.json" })`；报告「设计源」写「设计包（自产 mock）」。
 
 Paper 出图是可选项：**用户明确同意 + 会话里有 Paper MCP 写工具**两条都满足才做，否则只出
@@ -177,14 +183,15 @@ Paper 写类工具在普通验收流程里仍然禁用（见 3.1），设计模�
 
 ## 4. 一轮闭环的动作序列
 
-页面没有设计稿、走设计模式时，先在实现前加一个设计阶段（设计包冻结后再进下面的主表）：
+页面没有设计稿、走设计模式时，先在实现前加一个设计阶段（设计评审 `pass` 并冻结后再进下面的主表）：
 
 | 步骤 | 谁 | 动作 | 产物 |
 | --- | --- | --- | --- |
 | D1 | 队长 | 确认 `design.mode = from-scratch`，派设计师（交接 brief / styleRefs / outputs / 页面范围） | 交接消息 |
 | D2 | 设计师 | 读项目风格 → 写 `design.json` → 出 `mock.html`/`mock.png` → 抽 `ui-spec.json` → 写 `design.md` | `<run>/design/` 设计包 |
-| D3 | 画师 | 按 `mock.png`（像素）与 `ui-spec.json`（属性）实现，声明 selector 映射 | 页面代码 |
-| D4 | 验收者 | `ui_diff` 对 `mock.png`、`ui_probe` 对 `ui-spec.json`，按「设计层」门槛判定 | verdict + 报告 |
+| D3 | 验收者 | 只读评审设计包：契约可执行、三态、可访问性、品牌色、数据自洽、mock 渲染 | `<run>/review/design-review.json`（`verdict` + findings） |
+| D4 | 画师 | 按 `mock.png`（像素）与 `ui-spec.json`（属性）实现，声明 selector 映射 | 页面代码 |
+| D5 | 验收者 | `ui_diff` 对 `mock.png`、`ui_probe` 对 `ui-spec.json`，按「设计层 + 设计评审层」门槛判定 | verdict + 报告 |
 
 设计包冻结后，按主表推进：
 
