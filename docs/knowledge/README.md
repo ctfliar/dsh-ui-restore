@@ -23,6 +23,23 @@ docs/knowledge/
 | 直通车官网（zhitongche） | [v1 首次图像生成](projects/zhitongche/cases/2026-11-26-icons-v1-gen-failed.md) | ❌ failed | 2026-11-26 | 有底座、灰棚底、商品偏小、标签偏小 |
 | 直通车官网（zhitongche） | [v0 手绘 SVG](projects/zhitongche/cases/2026-11-26-icons-v0-svg-failed.md) | ❌ failed | 2026-11-26 | 误解风格，用矢量画照片级 3D |
 
+## Agent 接线说明
+
+五个 Agent 预设（队长 / 设计师 / 画师 / 验收者 / 接线者）的 SKILL 与 persona 都声明了
+「开工先查项目知识库」。Agent 是**按需读取**：只读与当前任务相关的项目 README、最近案例和
+`patterns/` 配方，**不自动加载整库**，也不把知识库当设计源。
+
+| 角色 | 读什么 | 用到哪一步 |
+| --- | --- | --- |
+| 队长（ui-restore） | 项目 README、案例索引、最近 failed 案例 | 开工定模式；派活时在交接里带「参考案例」路径 |
+| 设计师（ui-restore-designer） | `patterns/` 配方与模板、失败案例、项目设计系统 | 出设计包前定风格与刻度；生成后做风格自检 |
+| 画师（ui-restore-painter） | 项目设计系统、图块/风格模板 | 实现前对齐色板、尺寸与标签规格 |
+| 验收者（ui-restore-verifier） | 项目设计系统、失败案例、双层验收清单 | 判定时结构层 + 风格层分别取证，并指到具体项 |
+| 接线者（ui-restore-integrator） | 项目 README 的 api 约定、相关案例 | 接口接线前确认口径与状态处理 |
+
+边界：别的项目的案例只能借方法、不能借数值；失败案例只作教训，不做基准；案例不足时按通用流程做，
+做完再补案例，不为凑案例停工。
+
 ## 约定
 
 - **项目目录**：`projects/<slug>/README.md` 必须写清项目简报、输入清单（参考图/链接/名单，敏感素材只写来源不复制）、设计系统、案例索引。

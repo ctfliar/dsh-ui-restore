@@ -68,10 +68,15 @@
 run：<runRoot>/<页面>-r<轮次>
 设计源：image → <设计图路径> | mcp → <ui-spec 路径> | design → <run>/design/（mock.png + ui-spec.json） | none
 设计评审：<run>/review/design-review.json（from-scratch 时必填，verdict 必须是 pass 才开工）
+参考案例：<docs/knowledge/... 下的 passed / failed 案例路径（至多各 1 条）；无则写「无」>
 范围：<允许改动的目录/文件>
 上一轮结论：<findings 摘要或「首轮」>
 完成判据：<合格线 / high 清零 / 规则命令通过>
 ```
+
+**参考案例**由队长从项目知识库（`docs/knowledge/projects/<slug>/`）里挑，只给与本任务同类、
+最近的一条 passed 与一条 failed；子角色按需读取（见 SKILL 第 2B 节），任务板不复制案例正文。
+没有可用案例时写「无」，不要拿别的项目的案例凑数。
 
 验收任务额外要求产出结构化结论（`verdict` + `findings[]`），并且**任务板只做调度，
 不做判定**：判定属于验收者，任务状态只是它的投影。

@@ -942,6 +942,60 @@ async function coreSuite() {
     assert(skill.content.includes('pass') && skill.content.includes('评审不通过不得派画师'), 'SKILL 应写明评审不通过不得派画师');
   });
 
+  await test('知识库接线：SKILL 与五个预设均声明按案例工作', () => {
+    const skill = readBundledSkill();
+    for (const marker of ['2B. 项目知识库', '项目知识库', '失败案例', '参考案例']) {
+      assert(skill.content.includes(marker), `SKILL 应包含「${marker}」`);
+    }
+    for (const role of ['队长', '设计师', '画师', '验收者', '接线者']) {
+      assert(new RegExp(`### ${role}`).test(skill.content), `SKILL 第 7 节应有「${role}」角色说明`);
+    }
+
+    const patch = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8');
+    assert(patch.includes('docs/knowledge'), 'cordis.patch.yml 应引用 docs/knowledge');
+
+    // 逐预设切片断言（不看全文计数）：顶层条目以 4 空格缩进开头，
+    // 预设内嵌套的插件条目缩进更深，不会被当成片段边界。
+    const patchLines = patch.split(/\r?\n/);
+    const topLevelIdLine = /^ {4}- id: /;
+    const presetBlock = (presetId) => {
+      const marker = `- id: preset-${presetId}`;
+      const start = patchLines.findIndex((line) => line.trim() === marker);
+      assert(start >= 0, `cordis.patch.yml 应声明预设 ${presetId}`);
+      let end = patchLines.length;
+      for (let cursor = start + 1; cursor < patchLines.length; cursor += 1) {
+        if (topLevelIdLine.test(patchLines[cursor])) {
+          end = cursor;
+          break;
+        }
+      }
+      return {
+        text: patchLines.slice(start, end).join('\n'),
+        start: start + 1,
+        end: end + 1,
+      };
+    };
+    const presetRules = {
+      'ui-restore': ['知识库', '参考案例'],
+      'ui-restore-painter': ['知识库', '图块/风格模板'],
+      'ui-restore-verifier': ['知识库', '结构层', '风格层'],
+      'ui-restore-integrator': ['知识库', 'api 段'],
+      'ui-restore-designer': ['知识库', '失败案例', '风格自检'],
+    };
+    for (const [presetId, markers] of Object.entries(presetRules)) {
+      const block = presetBlock(presetId);
+      for (const marker of markers) {
+        assert(block.text.includes(marker), `预设 ${presetId}（第 ${block.start}~${block.end} 行）的 persona 应包含「${marker}」`);
+      }
+    }
+
+    const teams = readFileSync(join(ROOT, 'docs', 'teams-integration.md'), 'utf8');
+    assert(teams.includes('参考案例'), 'teams-integration 任务模板应含「参考案例」');
+
+    const knowledge = readFileSync(join(ROOT, 'docs', 'knowledge', 'README.md'), 'utf8');
+    assert(knowledge.includes('Agent 接线'), 'knowledge README 应含「Agent 接线」说明');
+  });
+
   // ---- Paper 直读（离线夹具，不依赖网络） --------------------------------
 
   // 真实 Paper 的 tools/call 返回两段 text block：block0 是上下文头，block1 才是业务载荷。
