@@ -7,8 +7,9 @@
 
 ### Added
 
-- **知识库**：新增 `docs/knowledge/`，首个案例「一级分类图标」记录参考风格复刻的完整输入输出、
-  Paper `paper-gen://` 提示词配方、风格 token、验收清单与踩坑经验（含两页成图与图块模板）。
+- **知识库**：新增 `docs/knowledge/`，按**项目平行结构**组织（`projects/<slug>/cases|assets` + 跨项目 `patterns/`）。
+  首个项目「直通车官网」收录三个版本：v0 手绘 SVG（失败）、v1 首次图像生成（失败）、v2 参考风格复刻（通过），
+  含输入清单、风格规格、Paper `paper-gen://` 提示词配方、验收清单、失败根因与复盘；失败版本成图一并入库。
 - **设计评审门**（`design.mode = from-scratch`）：设计师交付设计包后、画师动工前，验收者只读评审
   **设计包本身**——齐全性、`ui-spec` 对 `mock.html` 可执行且 `selectorMisses = 0`、loading/empty/error、
   可访问性（对比度/焦点/标签/alt）、品牌色与 `assumptions`、示意数据自洽、`mock.png` 与 `devices[0]`

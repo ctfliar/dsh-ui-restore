@@ -1,5 +1,7 @@
 # 案例：一级分类图标（参考风格复刻）
 
+- 状态：✅ passed（当前版本）
+- 版本关系：[v0 手绘 SVG（失败）](2026-11-26-icons-v0-svg-failed.md) → [v1 首次生成（失败）](2026-11-26-icons-v1-gen-failed.md) → v2（本案例）
 - 日期：2026-11-26
 - 工具链：dsh-ui-restore（像素分析/截图/审计）+ Paper MCP（画板、`paper-gen://` 图像生成）+ 视觉模型（读图核对）
 - 结论：两页共 20 个分类图标，整卡浅色底 + 3D 商品 + 大号标签；生成 20/20 成功，两轮迭代达到参考风格。
@@ -45,10 +47,10 @@ https://pub-ztc-pro.oss-cn-beijing.aliyuncs.com/ecshop/a0981ecac10f4bd9a1a75d379
 - Paper 文件「直通车官网」→ 页面 **分类图标** → 两个画板：
   - `分类图标-第1页`（1200×700，10 个）
   - `分类图标-第2页`（1200×700，10 个）
-- 截图：[page1](../assets/category-icons-page1.jpg) / [page2](../assets/category-icons-page2.jpg)
-- 风格规格：[style-tokens.json](../templates/style-tokens.json)
-- 提示词配方：[prompts.json](../templates/prompts.json)
-- 图块模板：[icon-tile.html](../templates/icon-tile.html)
+- 截图：[page1](../assets/v2-page1.jpg) / [page2](../assets/v2-page2.jpg)
+- 风格规格：[style-tokens.json](../../../patterns/style-tokens.json)
+- 提示词配方：[prompts.json](../../../patterns/prompts.json)
+- 图块模板：[icon-tile.html](../../../patterns/icon-tile.html)
 
 ## 3. 风格规格（实测 + 设计）
 
@@ -65,7 +67,7 @@ https://pub-ztc-pro.oss-cn-beijing.aliyuncs.com/ecshop/a0981ecac10f4bd9a1a75d379
 
 1. **确认图像能力**：模型路由声明 `inputModalities: [text, image]`（DSH）；否则 `read_image` 不可用。
 2. **看参考图与源图**：提取底色/圆角/占比/标签规格；把 15 张源图拼版确认商品语义。
-3. **写提示词**（模板见 `templates/prompts.json`）：
+3. **写提示词**（模板见 `patterns/prompts.json`）：
    `Realistic 3D e-commerce category icon, square composition: <products> standing directly on a flat <bg> pastel background. The pastel color fills the entire square edge-to-edge. No pedestal, no platform, no studio floor, no backdrop, no table. Products fill most of the frame, soft contact shadows, soft studio lighting, no text, no logo, clean minimal, high detail`
 4. **在 Paper 里生成**：`<img src="paper-gen://google-nano-banana-2-1?prompt=<urlencoded>&aspect_ratio=1:1">`；单次工具调用 ≤10 张图，按行（5 张/次）分批。
 5. **轮询状态**：`get_node_info` 的 `imageGeneration.status` 到 `ready`/`error`。
