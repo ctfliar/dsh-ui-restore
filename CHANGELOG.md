@@ -17,6 +17,13 @@
   队长 / 设计 / 验收三个预设 persona 同步（队长先派验收者评审，通过后才派画师；设计师按 findings 改包）；
   README / USAGE / teams-integration 同步；selftest 增加「设计评审门」一致性用例。
 
+### Changed
+
+- **性能：审计探针 selector 惰性化**：`pageAudit` 的 `cssPath` 改为仅在记录问题时计算（惰性 getter）。
+  5000 元素页面审计从 6.3–6.8s 降到 85ms（中位），selector 成本 12.2ms；契约模式不受影响。
+- **性能：PNG 编码 deflate 级别 9 → 6**：真实 diff 图（1440×900）编码 108.1ms → 27.1ms（−75%），
+  体积 65,618 → 69,281 字节（+5.6%）；差异图属排查中间产物，用体积换时间更划算。
+
 ## [0.3.0] - 2026-11-25
 
 ### Added
