@@ -1,0 +1,45 @@
+{
+  "reference": {
+    "source": "C:\\Users\\23051\\Downloads\\图标.png（本地，1754×832，不入库）",
+    "card_size": "275×275",
+    "card_radius": "≈60（22%）",
+    "label_approx_size": "48px / 粗体",
+    "sampled_backgrounds": {
+      "cream": "linear #FCF4D8 → #FCF0CC",
+      "light_blue": "linear #D8F0FF → #CCECFF",
+      "light_green": "linear #E4FCDC → #DCF8D0",
+      "peach": "linear #FCE4D8 → #FCDCCC",
+      "warm": "linear #FCECC4 → #FCE8B8"
+    }
+  },
+  "production": {
+    "card": { "size": 196, "radius": 44, "radius_ratio": "22.4%" },
+    "label": { "font": "Noto Sans SC", "size": 22, "weight": 700, "line_height": 28, "color": "#1A1A1A", "align": "center" },
+    "layout": {
+      "artboard": "1200×700",
+      "background": "#FFFFFF",
+      "padding": "40px 50px",
+      "columns": 5,
+      "column_gap": 26,
+      "row_gap": 30,
+      "tile_gap": 14
+    },
+    "product_fill": "70–85% of card",
+    "shadow": "soft contact shadow only",
+    "forbidden": ["pedestal", "platform", "studio floor", "backdrop", "text", "logo"]
+  },
+  "category_palette": {
+    "page1": {
+      "粮油调味": "cream", "家清纸品": "light blue", "休闲食品": "light green",
+      "饮料冲调": "peach", "生鲜水果": "warm cream", "食品特产": "soft warm beige",
+      "个护清洁": "light blue", "生活电器": "light green", "家居日用": "warm yellow",
+      "美妆护肤": "soft pink"
+    },
+    "page2": {
+      "母婴用品": "light blue", "数码影音": "light grey blue", "运动户外": "light green",
+      "护理护具": "light blue", "汽车用品": "light grey", "箱包皮具": "soft tan",
+      "服装鞋靴": "cream", "工业劳保": "light yellow", "企业办公": "light blue grey",
+      "节日套餐": "soft red"
+    }
+  }
+}

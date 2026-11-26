@@ -4,7 +4,7 @@
 另一个 agent 用截图 + 像素差异 + 样式探针做量化验收，产出一份能交给人的报告。支持 **Paper 直读 /
 设计图 / 线上参考页 / 无素材 / 设计模式（无参考自主设计）** 五种设计源，适用于本仓库所有前端页面。
 
-- 文档导航：[安装](docs/INSTALL.md) · [使用](docs/USAGE.md) · [Paper MCP](docs/paper-mcp.md) · [设计源](docs/design-sources.md)
+- 文档导航：[安装](docs/INSTALL.md) · [使用](docs/USAGE.md) · [Paper MCP](docs/paper-mcp.md) · [设计源](docs/design-sources.md) · [知识库](docs/knowledge/README.md)
 - 包内技能：`skills/ui-restore/SKILL.md`（安装后自动注册，无需手工拷贝）
 
 ## 能力表
@@ -116,7 +116,7 @@ dsh-ui-restore/
   schemas/                ui-spec JSON Schema
   profiles/               内置示例档案 + _schema.md
   skills/ui-restore/      闭环操作手册（安装后自动注册）
-  docs/                   INSTALL / USAGE / paper-mcp / design-sources / teams-integration
+  docs/                   INSTALL / USAGE / paper-mcp / design-sources / teams-integration / knowledge
   examples/               static-demo 夹具 + paper 脱敏样本
   scripts/                selftest / release / paper-to-ui-spec
   locale/                 报告文案 zh / en

@@ -7,6 +7,8 @@
 
 ### Added
 
+- **知识库**：新增 `docs/knowledge/`，首个案例「一级分类图标」记录参考风格复刻的完整输入输出、
+  Paper `paper-gen://` 提示词配方、风格 token、验收清单与踩坑经验（含两页成图与图块模板）。
 - **设计评审门**（`design.mode = from-scratch`）：设计师交付设计包后、画师动工前，验收者只读评审
   **设计包本身**——齐全性、`ui-spec` 对 `mock.html` 可执行且 `selectorMisses = 0`、loading/empty/error、
   可访问性（对比度/焦点/标签/alt）、品牌色与 `assumptions`、示意数据自洽、`mock.png` 与 `devices[0]`

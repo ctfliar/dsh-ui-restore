@@ -1,0 +1,28 @@
+{
+  "model": "google-nano-banana-2-1",
+  "aspect_ratio": "1:1",
+  "batch_limit": 10,
+  "template": "Realistic 3D e-commerce category icon, square composition: {products} standing directly on a flat {bg} pastel background. The pastel color fills the entire square edge-to-edge. No pedestal, no platform, no studio floor, no backdrop, no table. Products fill most of the frame, soft contact shadows, soft studio lighting, no text, no logo, clean minimal, high detail",
+  "categories": [
+    { "page": 1, "label": "粮油调味", "products": "a glossy cooking oil bottle, a bag of rice and a small soy sauce bottle", "bg": "cream" },
+    { "page": 1, "label": "家清纸品", "products": "a laundry detergent bottle, a tissue box and soft tissue rolls", "bg": "light blue" },
+    { "page": 1, "label": "休闲食品", "products": "two potato chip bags and scattered potato chips", "bg": "light green" },
+    { "page": 1, "label": "饮料冲调", "products": "a cola bottle and a white coffee cup with coffee", "bg": "peach" },
+    { "page": 1, "label": "生鲜水果", "products": "a watermelon slice and fresh oranges", "bg": "warm cream" },
+    { "page": 1, "label": "食品特产", "products": "Chinese specialty gift boxes, dried fruits and a tea tin", "bg": "soft warm beige" },
+    { "page": 1, "label": "个护清洁", "products": "a shampoo bottle, a body wash bottle and a toothpaste tube", "bg": "light blue" },
+    { "page": 1, "label": "生活电器", "products": "a white electric kettle", "bg": "light green" },
+    { "page": 1, "label": "家居日用", "products": "a frying pan with cutlery and a wooden spoon", "bg": "warm yellow" },
+    { "page": 1, "label": "美妆护肤", "products": "a skincare cream jar, a serum bottle and a lipstick", "bg": "soft pink" },
+    { "page": 2, "label": "母婴用品", "products": "a baby formula can and a baby bottle", "bg": "light blue" },
+    { "page": 2, "label": "数码影音", "products": "a smartphone, wireless headphones and a mouse", "bg": "light grey blue" },
+    { "page": 2, "label": "运动户外", "products": "a backpack, a thermos bottle and a camping lantern", "bg": "light green" },
+    { "page": 2, "label": "护理护具", "products": "a knee support brace and a first aid bandage roll", "bg": "light blue" },
+    { "page": 2, "label": "汽车用品", "products": "a steering wheel cover, a car perfume bottle and a car cleaning spray", "bg": "light grey" },
+    { "page": 2, "label": "箱包皮具", "products": "a leather handbag and a small suitcase", "bg": "soft tan" },
+    { "page": 2, "label": "服装鞋靴", "products": "a pair of sneakers and a folded shirt", "bg": "cream" },
+    { "page": 2, "label": "工业劳保", "products": "a yellow safety helmet and work gloves", "bg": "light yellow" },
+    { "page": 2, "label": "企业办公", "products": "a keyboard, a mouse and an open notebook", "bg": "light blue grey" },
+    { "page": 2, "label": "节日套餐", "products": "red gift boxes and a small paper lantern", "bg": "soft red" }
+  ]
+}
