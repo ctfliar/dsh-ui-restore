@@ -18,6 +18,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { decodePng, diffImages, encodePng, readPngSize } from '../lib/diff.js';
+import { analyzeStyle, compareStyles } from '../lib/style.js';
 import { UiSpecError, compareElementStyles, readSpecSource, validateSpec } from '../lib/spec.js';
 import { DEFAULT_PROFILE, loadProfile, normalizeProfile } from '../lib/profile.js';
 import { buildReport } from '../lib/report.js';
@@ -224,6 +225,8 @@ async function loadToolEntryHarness() {
   cpSync(fileURLToPath(new URL('../lib', import.meta.url)), libDir, { recursive: true });
   // 技能自动注册会按 PLUGIN_ROOT 读 skills/，所以复制时要带包内技能目录。
   cpSync(fileURLToPath(new URL('../skills', import.meta.url)), join(dir, 'skills'), { recursive: true });
+  // 报告的标签来自 locale/；复制后工具入口 harness 的报告输出与真实插件一致。
+  cpSync(fileURLToPath(new URL('../locale', import.meta.url)), join(dir, 'locale'), { recursive: true });
   writeModuleStub(
     join(dir, 'node_modules', '@deepseek-ai', 'schemastery'),
     'index.mjs',
@@ -365,6 +368,135 @@ async function coreSuite() {
     assert(mismatched.sizeMismatch.aspectDelta > 0.5, '比例差应可量化');
     assert(mismatched.score < 0.99, `比例不同 score 应下降，实际 ${mismatched.score}`);
     assert(mismatched.diffRatio > mismatched.threshold, '比例不同应判为超过阈值');
+  });
+
+  await test('风格指标：analyzeStyle 输出色板/明度/饱和/边缘密度/填充率与 bbox', () => {
+    const png = makeDemoPng();
+    const style = analyzeStyle(png);
+    assertEqual(style.width, 200, '宽度');
+    assertEqual(style.height, 120, '高度');
+    assert(style.palette.length >= 2 && style.palette.length <= 8, `主色板应为 2..8 色，实际 ${style.palette.length}`);
+    assertEqual(style.palette[0].color, '#ffffff', '白底应为第一主色');
+    assertClose(style.palette[0].ratio, 1 - (60 * 30) / (200 * 120), 0.01, '白底占比');
+    assertEqual(style.palette[1].color, '#2563eb', '蓝色块应为第二主色');
+    assertEqual(style.background.color, '#ffffff', '背景色应单独识别为白色');
+    assertClose(style.background.ratio, 1 - (60 * 30) / (200 * 120), 0.01, '背景占比');
+    assertEqual(style.contentPalette.length, 1, '内容色板应只剩蓝色块');
+    assertEqual(style.contentPalette[0].color, '#2563eb', '内容色板不应包含白底');
+    assertEqual(style.contentPalette[0].ratio, 1, '内容色板在内容像素内归一');
+    assert(Number.isInteger(style.colorCount) && style.colorCount >= 2, '颜色数应 ≥2');
+    assert(style.flatRatio > 0.99, `主色覆盖率应接近 1，实际 ${style.flatRatio}`);
+    assert(style.edgeDensity > 0 && style.edgeDensity < 0.1, `边缘密度应较小，实际 ${style.edgeDensity}`);
+    assertClose(style.fillRatio, (60 * 30) / (200 * 120), 0.005, '填充率应接近矩形占比');
+    assertEqual(style.bbox.x, 20, 'bbox.x');
+    assertEqual(style.bbox.y, 20, 'bbox.y');
+    assertEqual(style.bbox.width, 60, 'bbox.width');
+    assertEqual(style.bbox.height, 30, 'bbox.height');
+    assert(style.meanLuma > 0.8 && style.meanLuma <= 1, `白底平均明度应偏高，实际 ${style.meanLuma}`);
+    assert(style.meanSat > 0 && style.meanSat < 0.2, `白底平均饱和度应偏低，实际 ${style.meanSat}`);
+
+    const again = analyzeStyle(png);
+    assertEqual(JSON.stringify(again), JSON.stringify(style), '同图分析应稳定（纯函数）');
+  });
+
+  await test('风格指标：compareStyles 同图高分，不同色板/边缘密度可区分', () => {
+    const basePng = makeDemoPng();
+    const same = compareStyles(basePng, basePng);
+    assertEqual(same.score, 1, '同图风格分应为 1');
+    assertEqual(same.deltas.paletteDistance, 0, '同图色板距离为 0');
+    assert(same.notes.length >= 1, '应有风格说明');
+
+    const darkRgba = canvas(200, 120, [15, 23, 42, 255]);
+    fillRect(darkRgba, 200, { x: 20, y: 20, w: 60, h: 30 }, [249, 115, 22, 255]);
+    const darkPng = encodePng({ width: 200, height: 120, rgba: darkRgba });
+    const different = compareStyles(basePng, darkPng);
+    assert(different.score < 0.8, `不同色板/明度风格分应明显下降，实际 ${different.score}`);
+    assert(different.deltas.paletteDistance > 0.5, `色板距离应明显，实际 ${different.deltas.paletteDistance}`);
+    assert(different.deltas.luma > 0.5, `明度差应明显，实际 ${different.deltas.luma}`);
+    assert(different.notes.some((note) => note.includes('色板')), '应给出色板说明');
+
+    const flatPng = encodePng({ width: 200, height: 120, rgba: canvas(200, 120) });
+    const stripedRgba = canvas(200, 120);
+    for (let x = 0; x < 200; x += 10) fillRect(stripedRgba, 200, { x, y: 0, w: 5, h: 120 }, [15, 23, 42, 255]);
+    const stripedPng = encodePng({ width: 200, height: 120, rgba: stripedRgba });
+    const flatStyle = analyzeStyle(flatPng);
+    const stripedStyle = analyzeStyle(stripedPng);
+    assert(stripedStyle.edgeDensity > flatStyle.edgeDensity + 0.1, `条纹图边缘密度应更高，实际 ${stripedStyle.edgeDensity} vs ${flatStyle.edgeDensity}`);
+    assert(stripedStyle.fillRatio > 0.4, `条纹图填充率应明显，实际 ${stripedStyle.fillRatio}`);
+    const edgeCompare = compareStyles(flatPng, stripedPng);
+    assert(edgeCompare.deltas.edgeDensity > 0.1, `边缘密度差应可量化，实际 ${edgeCompare.deltas.edgeDensity}`);
+    assert(edgeCompare.score < same.score, '边缘密度不同也应降低风格分');
+    assertEqual(flatStyle.fillRatio, 0, '纯色图没有内容像素');
+    assertEqual(flatStyle.bbox.width, 0, '纯色图 bbox 宽应为 0');
+    assertEqual(flatStyle.bbox.height, 0, '纯色图 bbox 高应为 0');
+
+    // 灰底 vs 暖底：背景色单独比较，不能被「内容色板相同」稀释。
+    const makeBgPng = (background) => {
+      const rgba = canvas(200, 120, background);
+      fillRect(rgba, 200, { x: 20, y: 20, w: 60, h: 30 }, [37, 99, 235, 255]);
+      return encodePng({ width: 200, height: 120, rgba });
+    };
+    const backgroundCompare = compareStyles(makeBgPng([250, 247, 242, 255]), makeBgPng([128, 128, 128, 255]));
+    assert(backgroundCompare.deltas.paletteDistance > 0.3, `灰底 vs 暖底色板距离应显著，实际 ${backgroundCompare.deltas.paletteDistance}`);
+    assert(backgroundCompare.score < 0.9, `灰底 vs 暖底风格分应下降，实际 ${backgroundCompare.score}`);
+  });
+
+  await test('风格指标区分度：真实资产 v2 自比/灰度/红蓝互换/跨版本排序', () => {
+    const fixtureDir = join(ROOT, 'scripts', 'fixtures', 'style');
+    const v0 = readFileSync(join(fixtureDir, 'v0-page1.png'));
+    const v1 = readFileSync(join(fixtureDir, 'v1-page1.png'));
+    const v2p1 = readFileSync(join(fixtureDir, 'v2-page1.png'));
+    const v2p2 = readFileSync(join(fixtureDir, 'v2-page2.png'));
+
+    // 真实资产派生：灰度化 / 红蓝通道互换（只改像素，不新增夹具文件）。
+    const decoded = decodePng(v2p1);
+    const grayRgba = new Uint8Array(decoded.rgba.length);
+    const swapRgba = new Uint8Array(decoded.rgba);
+    for (let index = 0; index < decoded.width * decoded.height; index += 1) {
+      const offset = index * 4;
+      const value = Math.round(decoded.rgba[offset] * 0.299 + decoded.rgba[offset + 1] * 0.587 + decoded.rgba[offset + 2] * 0.114);
+      grayRgba[offset] = value;
+      grayRgba[offset + 1] = value;
+      grayRgba[offset + 2] = value;
+      grayRgba[offset + 3] = decoded.rgba[offset + 3];
+      swapRgba[offset] = decoded.rgba[offset + 2];
+      swapRgba[offset + 1] = decoded.rgba[offset + 1];
+      swapRgba[offset + 2] = decoded.rgba[offset];
+      swapRgba[offset + 3] = decoded.rgba[offset + 3];
+    }
+    const grayPng = encodePng({ width: decoded.width, height: decoded.height, rgba: grayRgba });
+    const swapPng = encodePng({ width: decoded.width, height: decoded.height, rgba: swapRgba });
+
+    const self = compareStyles(v2p1, v2p1);
+    const crossPage = compareStyles(v2p1, v2p2);
+    const v1v2 = compareStyles(v1, v2p1);
+    const v0v2 = compareStyles(v0, v2p1);
+    const gray = compareStyles(v2p1, grayPng);
+    const swap = compareStyles(v2p1, swapPng);
+
+    // 校准阈值：需求来自 t2 验收（v1/v2 区分度）。
+    assert(self.score >= 0.99, `v2 自比应 ≥0.99，实际 ${self.score}`);
+    assert(v1v2.score <= 0.90, `v1 vs v2 应 ≤0.90，实际 ${v1v2.score}`);
+    assert(v1v2.score < crossPage.score - 0.03, `v1 vs v2 应明显低于同版本跨页（v1v2=${v1v2.score}，cross=${crossPage.score}）`);
+    assert(gray.score <= 0.85, `v2 灰度化应 ≤0.85，实际 ${gray.score}`);
+    assert(swap.score <= 0.90, `v2 红蓝互换应 ≤0.90，实际 ${swap.score}`);
+    assert(v0v2.score <= 0.90 && v0v2.score < v1v2.score, `v0 vs v2 应低于 v1 vs v2（v0v2=${v0v2.score}，v1v2=${v1v2.score}）`);
+
+    // 色板度量的可解释性：不能只靠白底，内容色板必须贡献差异。
+    assert(v1v2.deltas.paletteDistance > 0.18, `v1 vs v2 色板距离应显著，实际 ${v1v2.deltas.paletteDistance}`);
+    assert(gray.deltas.paletteDistance > 0.2, `灰度化色板距离应显著，实际 ${gray.deltas.paletteDistance}`);
+    assert(swap.deltas.paletteDistance > 0.2, `红蓝互换色板距离应显著，实际 ${swap.deltas.paletteDistance}`);
+    assert(!v1v2.notes.some((note) => note.includes('配色和参考接近')), 'v1 vs v2 不应误报「配色接近」');
+    assert(v1v2.notes.some((note) => note.includes('差异明显')), 'v1 vs v2 应提示色板差异明显');
+
+    const analysis = analyzeStyle(v2p1);
+    assertEqual(analysis.background.color, '#ffffff', '真实资产背景应为白色');
+    assert(analysis.contentPalette.length > 0 && analysis.contentPalette.length <= 16, '内容色板应有 1..16 色');
+    assert(analysis.contentPalette[0].color !== '#ffffff', '内容色板不应被白底占满');
+    const whiteShare = analysis.contentPalette
+      .filter((entry) => entry.color === '#ffffff' || entry.color === '#fefefe')
+      .reduce((sum, entry) => sum + entry.ratio, 0);
+    assert(whiteShare < 0.05, `内容色板中纯白占比应接近 0，实际 ${whiteShare}`);
   });
 
   await test('ui-spec 校验：合法契约通过，非法属性/颜色/顶层字段报错', () => {
@@ -623,6 +755,60 @@ async function coreSuite() {
     assertEqual(meta.canvas.width, 200, 'meta 应单独记录差异画布');
     assertEqual(meta.viewport.width, 1280, 'ui_diff 不应覆盖本次视口');
     assertEqual(meta.viewport.height, 800, 'ui_diff 不应覆盖本次视口高度');
+  });
+
+  await test('工具入口级：ui_diff 输出 style 证据，ui_report 生成风格指标段', async () => {
+    const module = await getToolEntryHarness();
+    const runDir = join(baseDir, 'tool-entry-style-run');
+    ensureDir(runDir);
+    const designPath = writePng(join(runDir, 'design.png'), makeDemoPng());
+    const sameShotPath = writePng(join(runDir, 'shot.png'), makeDemoPng());
+    const definitions = new Map();
+    module.apply(
+      { tools: { register: (definition) => definitions.set(definition.name, definition) } },
+      {},
+      {},
+    );
+    const exec = { agent: { session: { header: { cwd: baseDir } } } };
+    const diffOutput = await definitions.get('ui_diff').execute({ design: designPath, shot: sameShotPath, run: runDir }, exec);
+    assert(diffOutput.style, 'ui_diff 输出应含 style 字段');
+    assertEqual(diffOutput.style.score, 1, '同图风格分应为 1');
+    assertEqual(diffOutput.pass, true, '同图像素判定仍为 pass（style 不改判定）');
+    assertEqual(diffOutput.style.reference.palette[0].color, '#ffffff', '参考色板应可读');
+    assert(diffOutput.style.deltas && typeof diffOutput.style.deltas.paletteDistance === 'number', '应带 deltas');
+
+    const diffJson = JSON.parse(readFileSync(join(runDir, 'diff.json'), 'utf8'));
+    assertEqual(diffJson.style.score, diffOutput.style.score, 'diff.json 应写 style');
+    const meta = readMeta(runDir);
+    assertEqual(meta.style.score, diffOutput.style.score, 'meta.json 应写 style');
+
+    // 不同色板：风格分应下降，但 pass 仍只由像素差异率决定。
+    const changedPng = writePng(join(baseDir, 'style-shot-changed.png'), makeDemoPng({ color: [220, 38, 38, 255] }));
+    const changed = await definitions.get('ui_diff').execute({
+      design: designPath,
+      shot: changedPng,
+      out: join(baseDir, 'style-diff-out'),
+    }, exec);
+    assert(changed.style.score < diffOutput.style.score, `不同色板风格分应下降，实际 ${changed.style.score}`);
+    assert(changed.style.deltas.paletteDistance > 0, '不同色板应有色板距离');
+    assertEqual(changed.pass, changed.diffRatio <= changed.threshold, 'pass 仍只由 diffRatio/threshold 决定');
+
+    const reportDefinitions = new Map();
+    module.apply(
+      { tools: { register: (definition) => reportDefinitions.set(definition.name, definition) } },
+      {},
+      {},
+    );
+    const report = await reportDefinitions.get('ui_report').execute({ run: runDir }, exec);
+    const html = readFileSync(report.htmlPath, 'utf8');
+    const markdown = readFileSync(report.markdownPath, 'utf8');
+    assert(html.includes('风格指标'), 'HTML 应含风格指标段');
+    assert(markdown.includes('风格指标'), 'Markdown 应含风格指标段');
+    assert(html.includes('色板距离') && html.includes('边缘密度') && html.includes('填充率'), 'HTML 应含风格指标明细');
+    assert(!/<script/i.test(html), '风格指标段不应引入脚本');
+    assert(!/src="https?:/i.test(html) && !/href="https?:/i.test(html), '风格指标段不应引入外链');
+    assert(!/data:image/i.test(html), '风格指标段不应内嵌 base64');
+    assertEqual(report.summary.pass, true, '报告判定仍由像素分数决定');
   });
 
   // ---- 假浏览器：浏览器层核心逻辑（B1/B2 回归，不需要 --browser） ----------
@@ -1577,6 +1763,56 @@ async function coreSuite() {
     assert(html.includes('冲突'), '显式 mode 与档案冲突时应在报告提示');
     assert(!html.includes('无设计稿模式'), '档案为 image 时不应再输出无设计稿声明');
     assert(markdown.includes('本次视口') && markdown.includes('档案设备档'), 'Markdown 夹具声明应分列视口与设备档');
+  });
+
+  await test('ui_report 风格指标段：有数据时 Markdown/HTML 都输出，无数据时省略且无外链/脚本', () => {
+    const styleRun = join(baseDir, 'run-report-style');
+    ensureDir(styleRun);
+    writePng(join(styleRun, 'design.png'), pngBytes(designFile));
+    writePng(join(styleRun, 'shot.png'), changedPng);
+    const style = {
+      ...compareStyles(pngBytes(designFile), changedPng),
+      reference: analyzeStyle(pngBytes(designFile)),
+      output: analyzeStyle(changedPng),
+    };
+    writeJsonFile(join(styleRun, 'diff.json'), {
+      tool: 'dsh-ui-restore',
+      version: '0.1.0',
+      generatedAt: new Date().toISOString(),
+      score: 0.95,
+      diffRatio: 0.05,
+      threshold: 0.01,
+      tolerance: 24,
+      regions: [],
+      style,
+    });
+    const report = buildReport({ run: styleRun, cwd: ROOT, locale: 'zh' });
+    const html = readFileSync(report.htmlPath, 'utf8');
+    const markdown = readFileSync(report.markdownPath, 'utf8');
+    assert(html.includes('风格指标'), 'HTML 应含风格指标段');
+    assert(markdown.includes('风格指标'), 'Markdown 应含风格指标段');
+    assert(html.includes('色板距离') && html.includes('边缘密度') && html.includes('填充率'), 'HTML 应含风格指标明细');
+    assert(markdown.includes('色板距离') && markdown.includes('边缘密度') && markdown.includes('填充率'), 'Markdown 应含风格指标明细');
+    assert(html.includes('class="swatch"'), 'HTML 应展示色板色块');
+    assert(html.includes('风格指标只作证据'), '应声明风格指标不参与判定');
+    assert(!/<script/i.test(html), '风格指标段不应引入脚本');
+    assert(!/src="https?:/i.test(html) && !/href="https?:/i.test(html), '风格指标段不应引入外链');
+    assert(!/data:image/i.test(html), '风格指标段不应内嵌 base64');
+    assert(report.model.style && report.model.style.score === style.score, '报告模型应带 style');
+
+    // 向后兼容：没有 style 数据的报告（审计运行）不显示该段，也不出现锚点。
+    const auditOnly = buildReport({
+      cwd: ROOT,
+      probePath: join(reportRun, 'probe.json'),
+      out: join(baseDir, 'report-style-absent'),
+      mode: 'none',
+      locale: 'zh',
+    });
+    const auditHtml = readFileSync(auditOnly.htmlPath, 'utf8');
+    const auditMarkdown = readFileSync(auditOnly.markdownPath, 'utf8');
+    assert(!auditHtml.includes('风格指标'), '无 style 数据时 HTML 不应有风格指标段');
+    assert(!auditMarkdown.includes('风格指标'), '无 style 数据时 Markdown 不应有风格指标段');
+    assert(!auditHtml.includes('id="style"'), '无 style 数据时不应有 style 锚点');
   });
 
   await test('run 元数据：meta.json 记录产物、档案与分数历史', () => {

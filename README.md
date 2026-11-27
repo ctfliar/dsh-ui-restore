@@ -13,8 +13,9 @@
 | --- | --- | --- |
 | 截图 | `ui_capture` | Playwright Chromium / 系统 Chrome / Edge；整页/元素；返回 PNG 路径与真实像素尺寸 |
 | 像素差异 | `ui_diff` | 等比对齐到设计画布后逐像素比较；score、差异率、连通域、热力图、左右对照；纯 Node 无 native 依赖 |
+| 风格指标 | `ui_diff` / `ui_report` | 参考 vs 产出的色板、明度、饱和、边缘密度、填充率与风格分；写进 `diff.json` / `meta.json`，报告新增「风格指标」段；**只作证据，不改 `pass` 判定** |
 | 样式探针 | `ui_probe` | 契约模式逐属性对比 `getComputedStyle`（`expected/actual/delta/severity`）；审计模式查溢出/硬编码色/字号间距/缺 alt/焦点/空态 |
-| 验收报告 | `ui_report` | Markdown + 单文件 HTML（无 JS、无外链、可打印），含三图、差异表、属性表、修复清单、夹具声明 |
+| 验收报告 | `ui_report` | Markdown + 单文件 HTML（无 JS、无外链、可打印），含三图、风格指标、差异表、属性表、修复清单、夹具声明 |
 | 编排 | 5 个 Agent 预设 | 队长（编排）/ 设计师（无参考时自主设计并产出设计包）/ 画师（实现）/ 接线者（接真实接口）/ 验收者（只读 + shell 跑 rules 门禁） |
 | 方法 | SKILL 自动注册 | 安装后新会话的 skill 目录直接出现 `ui-restore` |
 
@@ -112,7 +113,7 @@ node scripts/paper-to-ui-spec.mjs --file <fileId> --artboard <nodeId> --dry-run 
 dsh-ui-restore/
   package.json            bundle 元数据（dsh.bundle.patch / exports / engines / release scripts）
   cordis.patch.yml        Host 行 + 队长/设计/画师/接线/验收五个预设
-  lib/                    四个工具、PNG 差异、探针、ui-spec、档案、报告、技能注册
+  lib/                    四个工具、PNG 差异、风格指标、探针、ui-spec、档案、报告、技能注册
   schemas/                ui-spec JSON Schema
   profiles/               内置示例档案 + _schema.md
   skills/ui-restore/      闭环操作手册（安装后自动注册）

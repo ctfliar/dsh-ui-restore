@@ -7,6 +7,18 @@
 
 ### Added
 
+- **风格指标**（`lib/style.js`）：纯 Node 的 `analyzeStyle(pngBuffer)` 输出背景色（`background`）、
+  全图前 8 主色（`palette`）、内容色板（`contentPalette`，剔除背景后的前 16 色）、颜色数、平均明度/饱和度、
+  主色覆盖率、边缘密度、填充率与内容包围盒；`compareStyles(ref, out)` 输出风格分、
+  `paletteDistance` / `luma` / `sat` / `edgeDensity` / `fillRatio` 差异与可读 `notes`。
+  分数 = 1 − 加权归一 penalty（色板 0.55 / 明度 0.10 / 饱和 0.15 / 边缘密度 0.10 / 填充率 0.10）；
+  色板距离 = 背景色距离（0.35）+ 内容色板 CIELAB EMD（0.65，含未匹配色质量），分项差异为相对差；
+  阈值与权重集中在 `STYLE_CONSTANTS`；复用 `lib/diff.js` 的 PNG 解码。
+- `ui_diff` 新增 `style` 字段（`score` / `deltas` / `notes` / `reference` / `output`），
+  同时写入 `diff.json` 与 `meta.json`；`ui_report` 的 Markdown 与单文件 HTML 新增「风格指标」段
+  （参考 vs 产出、色板色块与说明）。**风格指标只作证据，`pass`/`threshold` 语义不变**；
+  没有 style 数据时报告整段省略。`docs/USAGE.md` / README 能力表同步，selftest 增加
+  `analyzeStyle` / `compareStyles`、`ui_diff` 写盘与报告段落（0 script / 0 外链 / 0 base64）用例。
 - **Paper 开工自检**：SKILL 3A 与 `docs/paper-mcp.md` 增加「核对 fileId → 尝试 `open_file` → 失败请用户打开」的约定，
   避免对着 Scratchpad / 同名草稿做设计或验收。
 - **品类名推导规则**：用户只给品类名时，设计师按 `patterns.derivation` 自行推导 2–3 个代表商品与色族（不反问），
@@ -29,6 +41,11 @@
 
 ### Changed
 
+- **风格指标区分度校准**（t2 验收修复）：修复 top-8 主色被白底占满、最近色匹配稀释色相的问题——
+  背景色单独比较，内容色板用 CIELAB（ΔL 权重 0.2）双向 EMD 并计入未匹配色质量；明度/饱和/边缘密度/
+  填充率改为相对差。真实资产回归（600px PNG 夹具 `scripts/fixtures/style/`）：v2 自比 1.0、
+  v1 vs v2 **0.791**（同版本跨页 0.854）、v2 灰度化 **0.701**、v2 红蓝互换 **0.851**、v0 vs v2 0.600；
+  selftest 新增阈值守卫，`docs/USAGE.md` 补风格分档与「不是 pass 判据」说明。
 - **性能：审计探针 selector 惰性化**：`pageAudit` 的 `cssPath` 改为仅在记录问题时计算（惰性 getter）。
   5000 元素页面审计从 6.3–6.8s 降到 85ms（中位），selector 成本 12.2ms；契约模式不受影响。
 - **性能：PNG 编码 deflate 级别 9 → 6**：真实 diff 图（1440×900）编码 108.1ms → 27.1ms（−75%），
