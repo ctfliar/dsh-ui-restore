@@ -9,6 +9,9 @@
 
 - **Paper 开工自检**：SKILL 3A 与 `docs/paper-mcp.md` 增加「核对 fileId → 尝试 `open_file` → 失败请用户打开」的约定，
   避免对着 Scratchpad / 同名草稿做设计或验收。
+- **品类名推导规则**：用户只给品类名时，设计师按 `patterns.derivation` 自行推导 2–3 个代表商品与色族（不反问），
+  推导理由写入 assumptions；验收者风格层增加「品类可辨识性 + 色板合规」两项；SKILL 2B 与两个 persona 同步，
+  selftest 守卫加入「推导 / 可辨识」标记。
 - **第 3 页单品类扩展规格**：1200×700、标题 24/700 + 副标 12、单图块水平居中；知识库补 `v3-page3.jpg`
   （宠物用品）与图块模板的居中片段。
 - **知识库**：新增 `docs/knowledge/`，按**项目平行结构**组织（`projects/<slug>/cases|assets` + 跨项目 `patterns/`）。

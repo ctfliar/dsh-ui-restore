@@ -2,6 +2,22 @@
   "model": "google-nano-banana-2-1",
   "aspect_ratio": "1:1",
   "batch_limit": 10,
+  "derivation": {
+    "product_rule": "品类名 → 2–3 个代表性商品：具体物件、可辨识、非品牌、可 3D 渲染；避免抽象符号或纯文字",
+    "bg_rule": {
+      "食品/粮油/生鲜": "cream / warm / peach",
+      "家清/个护/母婴/护理": "light blue",
+      "数码/汽车/企业办公": "light grey / light blue grey",
+      "运动/生活电器": "light green",
+      "箱包/服饰": "soft tan / cream",
+      "美妆": "soft pink",
+      "节日": "soft red",
+      "工业劳保": "light yellow"
+    },
+    "fallback": "新品类没有直接映射时，从 sampled_backgrounds 选最接近的色族；在 assumptions 写理由，不得新增品牌色/高饱和",
+    "ask_policy": "用户只给品类名时不要反问商品/底色；自行推导并写入 assumptions，由验收者复核",
+    "verifier_checks": ["品类可辨识性：商品是否对应品类", "色板合规：无新增品牌色/高饱和"]
+  },
   "template": "Realistic 3D e-commerce category icon, square composition: {products} standing directly on a flat {bg} pastel background. The pastel color fills the entire square edge-to-edge. No pedestal, no platform, no studio floor, no backdrop, no table. Products fill most of the frame, soft contact shadows, soft studio lighting, no text, no logo, clean minimal, high detail",
   "categories": [
     { "page": 1, "label": "粮油调味", "products": "a glossy cooking oil bottle, a bag of rice and a small soy sauce bottle", "bg": "cream" },

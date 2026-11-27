@@ -978,9 +978,9 @@ async function coreSuite() {
     const presetRules = {
       'ui-restore': ['知识库', '参考案例'],
       'ui-restore-painter': ['知识库', '图块/风格模板'],
-      'ui-restore-verifier': ['知识库', '结构层', '风格层'],
+      'ui-restore-verifier': ['知识库', '结构层', '风格层', '可辨识'],
       'ui-restore-integrator': ['知识库', 'api 段'],
-      'ui-restore-designer': ['知识库', '失败案例', '风格自检'],
+      'ui-restore-designer': ['知识库', '失败案例', '风格自检', '推导'],
     };
     for (const [presetId, markers] of Object.entries(presetRules)) {
       const block = presetBlock(presetId);
