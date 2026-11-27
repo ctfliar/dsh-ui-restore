@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-27
+
 ### Added
 
 - **风格指标**（`lib/style.js`）：纯 Node 的 `analyzeStyle(pngBuffer)` 输出背景色（`background`）、
