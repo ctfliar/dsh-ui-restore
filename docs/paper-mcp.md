@@ -121,7 +121,23 @@ warning 里汇总一条（如「已跳过 10 个…（left×1、width×1…）�
 | `get_tree_summary` 只有 `summary` 字符串 | Paper 0.5.19 返回文本树，不是节点数组 | 不要用它取节点；用 `get_children` 逐层 BFS |
 | 拿不到 artboard | `get_basic_info` 的 `artboards` 为空 | 确认 Paper 当前文件已打开且包含画板；先打开目标文件再调用 |
 
-## 5. 从 Paper 到 ui-spec 的两条路
+## 5. 开工自检与打开文件
+
+Paper MCP 只能操作**当前已运行 Paper 里打开的那个文档**。同一份文件可能还有同名草稿 / copy，开错会得到空画板。
+
+每次用 Paper 当设计源时，先做三步：
+
+1. `get_basic_info` 取 `file.id`，与档案/任务里登记的目标 `fileId` 比对；
+2. 不一致（或当前是 `Scratchpad` 等空文档）时，调用 `open_file({ fileId, pageId })` 尝试打开目标文件/页面；
+3. `open_file` 失败（例如返回 `Could not find Paper`、文件不在打开列表）时，**请用户手动打开**目标文件再继续，不要对着错误的文档做设计或验收。
+
+说明与边界：
+
+- 插件本身**不启动 Paper 应用**（它不连 MCP，Paper 由 DSH 的 MCP 客户端挂载）；"打开 Paper" 属于操作系统/应用层动作，不在插件职责内。
+- MCP 的 `open_file` 是否可用取决于 Paper 版本与当前会话；实测目标文件未打开时可能直接失败，这时只能用户手动打开。
+- 建议把目标 `fileId` 写进任务描述或 run 备注（例如 `paper: { fileId, pageId }`），避免每次都靠猜。
+
+## 6. 从 Paper 到 ui-spec 的两条路
 
 - **全自动**：`node scripts/paper-to-ui-spec.mjs --file <fileId> --artboard <nodeId> --out ui-spec.json --max-depth 3 --url "$PAPER_MCP_URL"`
   （也可以只设环境变量 `PAPER_MCP_URL`）。脚本会依次调用 `get_basic_info` / `get_tokens` /

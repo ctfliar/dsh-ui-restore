@@ -118,6 +118,9 @@
 有 Paper MCP、且能拿到结构化节点样式时，优先走这条：直接读设计值生成 ui-spec，交给
 `ui_probe(expected)` 做契约验收；**设计图 / 截图不再是主判据**。
 
+**先核对文档**：`get_basic_info` 的 `file.id` 必须是目标 fileId；当前是 `Scratchpad`、同名草稿或 copy 时，
+先 `open_file({ fileId, pageId })` 尝试打开，失败就请用户手动打开目标文件——不要对着错误的文档读样式。
+
 前提：
 - 会话里能调用 Paper MCP 的只读工具；端点由使用者配置（见 `docs/paper-mcp.md`）。本插件不连接
   任何 MCP、不读凭据。
