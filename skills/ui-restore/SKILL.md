@@ -39,6 +39,8 @@
    - `tokens.files`：设计 token 来源文件（供人和模型查证，插件只做文字引用）。
    - `baseline.pages`：无设计源时用的「三同」基准页（同类型 → 同宽度 → 同数据量）。
    - `designSource.kind`：`none`（无设计源）/ `image`（设计图）/ `mcp`（外部设计工具产出的结构化文件）。
+   - `styleBaseline`（可选）：风格基线图片路径（PNG/JPEG，相对工作区）。`ui_diff` 未传 `design` 时用它
+     只算风格指标（style-only），不做像素判定；路径非法会告警并忽略。
    - `design`：设计模式声明（见 3B）。`mode` 取 `reference`（默认：有设计源、或无素材模式）或
      `from-scratch`（无参考、且用户明确要求自主设计）；`from-scratch` 时还要写 `brief`（设计目标）、
      `styleRefs`（可读的风格参考路径/URL）、`outputs`（`spec` / `mock`，可选 `paper`）。
@@ -48,7 +50,7 @@
      （凭据所在环境变量名）。只做视觉还原、不接后端时留默认值即可。
    - `knownIssues`：**产品确认过**、不计入缺陷的项。不要自己往里加。
 3. 有设计源：
-   - 图像模式：把设计图导出成 PNG，白底、单画板、与 `devices[0]` 同比例，放到版本库能引用的位置。
+   - 图像模式：把设计图导出成 PNG 或 JPEG，白底、单画板、与 `devices[0]` 同比例，放到版本库能引用的位置。
    - 结构化模式：把设计工具 MCP 导出的 ui-spec 存成 JSON 文件（见 `docs/design-sources.md`）。
 4. 无设计源：先记下「三同」基准页，再准备一份**关键锚点** ui-spec（8~15 条即可）：
    主操作按钮、页面标题、卡片、表头、状态标签、弹窗、空态。不要给整页每个元素写期望值。
@@ -95,6 +97,26 @@
 - 验收者风格层额外检查两项：**品类可辨识性**（商品是否对应品类）与**色板合规**（无新增品牌色/高饱和）；
   推断不合理给 `needs_revision`，而不是只看结构指标。
 
+## 2C. 安全边界与判定可信（代码强制）
+
+下面几条由插件代码强制，不是提示词约定；验收结论必须能对上这些证据。
+
+1. **路径只允许在工作区内**：`ui_capture` 的 `path` / `run`，`ui_diff` 的 `design` / `shot` / `out` / `run`，
+   `ui_probe` 的 `out` / `run`，`ui_report` 的 `run` / `design` / `shot` / `diffPath` / `diffJson` / `probePath` / `out`
+   都会先解析成工作区内的绝对路径。绝对路径指向工作区外、或用 `../` 跳出工作区，会直接报错并说明原因，
+   **不会静默读取，也不会写盘**。设计图/截图请先放进 `<工作区>/<runRoot>/<run>/`。
+2. **阈值锁死**：`ui_diff` 的判定阈值只取档案 `thresholds.score`（`threshold = 1 - score`），
+   像素容差只取插件配置 `tolerance`；`ui_report` 的合格线同样只取档案。调用参数里的
+   `threshold` / `tolerance` 会被忽略并返回 warning；`declared`（声明值）与 `effective`（生效值）
+   同时写进 `diff.json` 与 `meta.json`。`pass` 语义不变，仍只按档案阈值判定。
+3. **证据身份**：`diff.json` / `meta.json` / 报告夹具区记录本次会话 cwd、会话 id（exec 可取时）、
+   工具调用 id 与时间、设计稿与截图的 SHA-256。判定必须引用这些字段；图被换过、或不是同一会话验的，
+   哈希/时间对不上就能被发现。
+4. **已知限制（必须人工兜底）**：`design.mode = from-scratch` 的**设计评审门仍是流程约束，不是代码强制**——
+   插件不会阻止画师在 `<run>/review/design-review.json` 出现 `verdict = pass` 之前改代码，
+   也不会校验评审文件本身。队长必须在派实现前确认评审 `pass`，验收者在报告里写明评审结论；
+   不要把它当成「工具已经保证了」的门禁。
+
 ## 3. 能力探测（先探测，再定形态）
 
 开工时逐项确认下面这些能力。**探测结果只决定形态，不决定是否继续。**
@@ -105,7 +127,7 @@
 | 浏览器 | 用 `ui_capture` 截一张最小页面，看是否返回 PNG 路径 | 截图与探针 | 换系统 Chrome/Edge，或给插件配置 `executablePath`；沙箱禁起进程时改到非受限会话 |
 | 项目校验命令 | 档案 `rules` 里是否有 `required: true` 的项，命令能否跑通 | 规则门禁（第 0 层） | 没有机械门禁就在报告里写明「本项目无机械门禁」，不要假装跑过 |
 | 设计工具 MCP（结构化，含 Paper 直读） | 会话里能否调用 `get_basic_info` / `get_computed_styles` 等只读工具（见第 3A 节） | 生成 ui-spec，走契约模式 | 用设计图（图像模式） |
-| 设计图 | 档案 `designSource.kind = image` 且 PNG 可读 | `ui_diff` 像素比对 | 走无素材模式（第 8 节） |
+| 设计图 | 档案 `designSource.kind = image` 且 PNG/JPEG 可读 | `ui_diff` 像素比对 | 走无素材模式（第 8 节） |
 | 设计能力（无参考自主设计） | 用户明确说「没有设计稿，你来设计」，且档案 `design.mode = from-scratch`；会话能只读项目样式/页面 | 先产出设计包（3B），再让画师照着实现 | `design.mode` 保持 `reference`：走 3A / 设计图 / 第 8 节，**不要自行「自己设计一个」来补设计源** |
 | 团队任务板 | 会话里是否出现团队/任务板相关工具 | 并行多页面、任务状态可审计 | 用基线的 subagent 串行闭环，产物仍然落 run 目录 |
 | 后端接口 | 项目里有没有 api 目录 / request 封装，OpenAPI 是否存在，参考页能否抓到请求 | 接线者把页面数据层接到真实接口 | 没有接口来源时接线者给 blocked，列缺失清单，不编造 |
@@ -261,12 +283,18 @@ Paper 可选出图，**同时满足**两条才做，否则只出 `mock.html` + `
 ### Step 3 · 差异（验收者，有设计源才做）
 
 ```json
-{ "design": "<设计图 PNG>", "shot": "<run>/shot.png", "profile": "<档案 id>", "run": "<runRoot>/<页面>-r1" }
+{ "design": "<设计图 PNG/JPEG>", "shot": "<run>/shot.png", "profile": "<档案 id>", "run": "<runRoot>/<页面>-r1" }
 ```
 
 得到 `score`、`diffRatio`、`regions[]`（x/y/宽高/像素数/占比/severity）、
 `sizeMismatch`、热力图 `diff.png`、左右对照 `side-by-side.png`。
 同一 run 目录多次 `ui_diff` 会累积成分数曲线。
+判定阈值不能由调用参数覆盖：传 `threshold` / `tolerance` 只会得到 warning，实际生效值看
+`diff.json.thresholds.effective` 与 `meta.json` 的 `thresholds`；`pass` 仍按档案阈值计算。
+
+没有 `design`、但档案配了 `styleBaseline`（PNG/JPEG）时，可只传 `{ shot, profile, run }` 做 **style-only**：
+只输出 `style` 证据（`diff.json.styleOnly = true`），没有像素 `score`/`pass`。style-only 不能替代达标判定，
+要判定仍须有设计源；`styleBaseline` 非法时工具会 warning 并忽略。
 
 ### Step 4 · 判定（验收者）
 
@@ -284,6 +312,7 @@ Paper 可选出图，**同时满足**两条才做，否则只出 `mock.html` + `
 ```
 
 `ui_report` 产出 `report.md`（引用结论）与 `report.html`（交付/留档）。
+合格线只从档案取；传 `threshold` 会被忽略并告警，报告的「声明阈值（已忽略）」与「阈值来源」行会写明。
 `pass` 为 false 时，只退回 1~3 条最关键项，不要贴一屏。
 
 ## 4A. 接口接线阶段（接线者，仅当页面要连真实接口）
@@ -361,7 +390,7 @@ api-map 最小形状：
 
 | 门槛 | 要求 |
 | --- | --- |
-| 还原度 | `report.summary.score` ≥ 档案 `thresholds.score`；有设计源时才适用 |
+| 还原度 | `report.summary.score` ≥ 档案 `thresholds.score`；有设计源时才适用。判定阈值由代码锁死，调用参数改不了 |
 | 属性层 | `probe.summary.high === 0`；`medium` 项要么修，要么逐条写「不改的理由」 |
 | 选择器 | `selectorMisses` 清零；确属废弃锚点的，写明由谁、在哪一轮更新 |
 | 区域层 | `regions` 里 `high` 区域逐个对照设计源：是真差异，还是字体渲染/整体位移噪音 |
@@ -370,6 +399,9 @@ api-map 最小形状：
 | 设计层 | `design.mode = from-scratch` 时：设计包齐全（`<run>/design/design.json`、`ui-spec.json`、`mock.png`、`design.md`，`design.md` 写清假设与未定项）；画师实现与 `mock.png` 的 `score` ≥ 档案合格线；mock 与实现同设备档（`sizeMismatch.mismatch = false`）；报告如实写「设计源 = 设计包（自产 mock）」 |
 | 设计评审层 | `design.mode = from-scratch` 时：`<run>/review/design-review.json` 存在且 `verdict = pass`，评审 findings 已闭环（`needs_revision` 项有修复或写明理由）；画师不得在评审通过前动工；报告写清评审结论与「图像是否人眼复核」 |
 | 模式一致性 | 报告写清「本次模式 / 设计源」；无设计源时不得声称「与设计稿一致」；设计模式下不得把自产 mock 说成客户设计稿或 Paper 出图 |
+
+> **已知限制**：设计评审门（`<run>/review/design-review.json` 的 `verdict = pass`）是流程约束，不是代码强制。
+> 插件不会阻止画师在评审通过前动工，也不会校验评审文件；队长必须在派实现前人工确认，验收者在报告里写明评审结论。
 
 `findings[]` 每条至少包含：
 
@@ -622,7 +654,8 @@ verdict：pass / needs_revision / blocked
 
 ## 夹具声明
 
-档案、设计源、阈值、工具版本、Node 版本、产物清单
+档案、设计源、阈值（声明值/生效值/来源）、工具版本、Node 版本、产物清单、
+证据身份（会话 id / cwd / 调用时间 / design SHA-256 / shot SHA-256）
 ```
 
 `report.html` 是同一份结论的单文件静态页（无脚本、无外链），用于交接与人审；
@@ -642,6 +675,11 @@ verdict：pass / needs_revision / blocked
 | 验收者只跑 rules 命令、不改代码 | 只读 fs 关闭写/改/补丁；规则不过给 `needs_revision` + 命令输出摘要（命令、退出码、关键报错） |
 | 页面服务不可用 | 由画师/队长提前起好；服务不可用时给 `blocked`，不要自行改环境 |
 | 为了通过把期望值改小 | 禁止。改阈值、改 ui-spec、改 knownIssues 都等于伪造结论 |
+| 工具报「超出工作区」 | 设计图/截图/输出目录必须放在工作区内（建议 `<run>` 目录）；工作区外的绝对路径会被拒绝，不会写盘 |
+| 想用 `threshold` / `tolerance` 参数放宽判定 | 无效：参数被忽略并告警，`pass` 仍按档案阈值算；要改合格线只能改档案 `thresholds.score` 并写明谁批准 |
+| 报告里出现「声明阈值（已忽略）」 | 有人试图用调用参数覆盖阈值；以「阈值来源」和生效值为准，不要引用声明值下结论 |
+| 设计评审还没 pass 就开始实现 | 工具拦不住（已知限制）；队长必须在派画师前人工确认评审 `verdict = pass` |
+| 证据哈希/会话对不上 | 图被换过或不是同一会话验的；重新截图/重跑 `ui_diff`，不要把旧报告当本轮证据 |
 
 ## 11. 一句话原则
 

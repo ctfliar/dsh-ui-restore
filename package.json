@@ -2,12 +2,22 @@
   "name": "dsh-ui-restore",
   "version": "0.4.0",
   "description": "UI restoration closed loop for DeepSeek Harness: screenshot capture, canvas-aligned pixel diff, computed-style probes, and a static acceptance report (Markdown + single-file HTML).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ctfliar/dsh-ui-restore.git"
+  },
+  "homepage": "https://github.com/ctfliar/dsh-ui-restore#readme",
+  "bugs": {
+    "url": "https://github.com/ctfliar/dsh-ui-restore/issues"
+  },
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./schemas/ui-spec.schema.json": "./schemas/ui-spec.schema.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
     "./package.json": "./package.json"
   },
   "files": [
@@ -15,10 +25,14 @@
     "schemas",
     "profiles",
     "skills",
-    "docs",
+    "docs/*.md",
+    "docs/knowledge/*.md",
+    "docs/knowledge/**/*.md",
+    "docs/knowledge/patterns/*.json",
+    "docs/knowledge/patterns/*.html",
     "examples",
     "scripts",
-    "locale",
+    "locale/*.json",
     "cordis.patch.yml",
     "README.md",
     "CHANGELOG.md",
@@ -43,7 +57,7 @@
     "release:dry": "node scripts/release.mjs",
     "release:patch": "node scripts/release.mjs --bump patch --apply",
     "release:minor": "node scripts/release.mjs --bump minor --apply",
-    "check": "node --check lib/index.js && node --check lib/browser.js && node --check lib/diff.js && node --check lib/style.js && node --check lib/probe.js && node --check lib/spec.js && node --check lib/profile.js && node --check lib/paths.js && node --check lib/report.js && node --check lib/skill.js && node --check scripts/selftest.mjs && node --check scripts/release.mjs"
+    "check": "node --check lib/index.js && node --check lib/browser.js && node --check lib/diff.js && node --check lib/image.js && node --check lib/style.js && node --check lib/probe.js && node --check lib/spec.js && node --check lib/profile.js && node --check lib/paths.js && node --check lib/report.js && node --check lib/skill.js && node --check scripts/selftest.mjs && node --check scripts/release.mjs"
   },
   "keywords": [
     "dsh-plugin",
@@ -58,6 +72,7 @@
     "@deepseek-ai/cordis": "^4.0.1"
   },
   "dependencies": {
+    "jpeg-js": "^0.4.4",
     "playwright-core": "^1.49.0"
   }
 }

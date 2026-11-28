@@ -2,10 +2,13 @@
 
 面向「用 dsh-ui-restore + Paper 做视觉还原/设计」的可复用经验。**按项目平行组织**，一个项目一个目录，跨项目复用的方法/配方放 `patterns/`。
 
+> 自动索引：**[INDEX.md](INDEX.md)**（项目/案例/状态/日期/链接 + patterns 资产）。新增或重命名案例后运行 `node scripts/knowledge-index.mjs` 刷新，用 `node scripts/knowledge-index.mjs --check` 校验一致性。
+
 ## 结构
 
 ```text
 docs/knowledge/
+├── INDEX.md                      # 自动生成：项目案例与 patterns 索引
 ├── README.md                     # 本文件：索引与约定
 ├── projects/
 │   └── <project-slug>/           # 一个项目一个目录（可平行多个）
@@ -17,11 +20,27 @@ docs/knowledge/
 
 ## 案例索引
 
+> 完整、自动生成的索引见 **[INDEX.md](INDEX.md)**；下表是早期手写的一句话摘要，新增案例请以 INDEX.md 为准。
+
 | 项目 | 案例 | 状态 | 日期 | 一句话 |
 | --- | --- | --- | --- | --- |
 | 直通车官网（zhitongche） | [v2 参考风格复刻](projects/zhitongche/cases/2026-11-26-icons-v2-passed.md) | ✅ passed | 2026-11-26 | 20 个分类图标，整卡浅底 + 3D 商品 |
 | 直通车官网（zhitongche） | [v1 首次图像生成](projects/zhitongche/cases/2026-11-26-icons-v1-gen-failed.md) | ❌ failed | 2026-11-26 | 有底座、灰棚底、商品偏小、标签偏小 |
 | 直通车官网（zhitongche） | [v0 手绘 SVG](projects/zhitongche/cases/2026-11-26-icons-v0-svg-failed.md) | ❌ failed | 2026-11-26 | 误解风格，用矢量画照片级 3D |
+
+## 索引维护
+
+`INDEX.md` 由脚本扫描生成，**不要手工编辑**：
+
+```bash
+node scripts/knowledge-index.mjs           # 生成/刷新 docs/knowledge/INDEX.md
+node scripts/knowledge-index.mjs --check   # 一致 exit 0；缺失或不一致 exit 1（可接 CI/本地）
+```
+
+- 扫描范围：`projects/<slug>/cases/*.md` 与 `patterns/`（patterns 的「用途」优先取 `patterns/README.md` 表格，缺省按文件类型兜底）。
+- 案例状态：优先正文 `- 状态：✅ passed`，否则取文件名后缀 `<status>`；两者冲突直接报错。
+- 案例日期：优先正文 `- 日期：YYYY-MM-DD`，否则取文件名前缀；缺失或非法直接报错。
+- 新增/重命名案例、改状态、增删 `patterns/` 文件后重跑生成；提交前跑 `--check`。
 
 ## Agent 接线说明
 
@@ -47,7 +66,7 @@ docs/knowledge/
 - **失败案例必写**：期望、实际、证据截图、根因、教训、后续如何被修正。失败版本同样入库，不删。
 - **资产**：只放产出与证据；命名 `<版本>-<描述>.<ext>`（如 `v1-gen-page1.jpg`）。品牌商品图、客户设计稿不入库，只写来源路径。
 - **跨项目复用**：提示词配方、风格 token、模板、检查清单放 `patterns/`，项目 README 引用，不复制粘贴。
-- **新增项目**：建目录与 README → 放案例与资产 → 更新本索引。
+- **新增项目**：建目录与 README → 放案例与资产 → 运行 `node scripts/knowledge-index.mjs` 刷新 `INDEX.md`。
 
 ## 通用方法
 

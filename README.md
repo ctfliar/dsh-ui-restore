@@ -4,7 +4,7 @@
 另一个 agent 用截图 + 像素差异 + 样式探针做量化验收，产出一份能交给人的报告。支持 **Paper 直读 /
 设计图 / 线上参考页 / 无素材 / 设计模式（无参考自主设计）** 五种设计源，适用于本仓库所有前端页面。
 
-- 文档导航：[安装](docs/INSTALL.md) · [使用](docs/USAGE.md) · [Paper MCP](docs/paper-mcp.md) · [设计源](docs/design-sources.md) · [知识库](docs/knowledge/README.md)
+- 文档导航：[安装](docs/INSTALL.md) · [使用](docs/USAGE.md) · [插件详情](docs/DETAIL.md) · [Paper MCP](docs/paper-mcp.md) · [设计源](docs/design-sources.md) · [知识库](docs/knowledge/README.md) · [E2E/CI](docs/e2e.md)
 - 包内技能：`skills/ui-restore/SKILL.md`（安装后自动注册，无需手工拷贝）
 
 ## 能力表
@@ -101,23 +101,26 @@ plugin_manager { "action": "install_bundle", "target": "<包目录绝对路径>"
 ```bash
 node scripts/selftest.mjs            # 核心集（无需浏览器）
 node scripts/selftest.mjs --browser  # 追加真实浏览器链路
+node scripts/e2e.mjs                 # 黄金 E2E：file:// 夹具 + 一次 launch 多视口 + 报告硬约束
 node scripts/paper-to-ui-spec.mjs --file <fileId> --artboard <nodeId> --dry-run  # Paper 脚本 dry-run
 ```
 
 核心集覆盖 PNG 编解码、差异定位、ui-spec 校验、档案默认值、报告硬约束、技能注册与 Paper
 离线夹具；新增的 Paper 直读脚本用 `examples/paper/` 下的脱敏样本单测，不需要网络。
+黄金 E2E 需要本机有 Chromium / Chrome / Edge 任一，跑法与 CI 说明见 **[docs/e2e.md](docs/e2e.md)**。
 
 ## 目录结构
 
 ```
 dsh-ui-restore/
   package.json            bundle 元数据（dsh.bundle.patch / exports / engines / release scripts）
+  package-lock.json       依赖锁文件（CI 与本地统一用 npm ci）
   cordis.patch.yml        Host 行 + 队长/设计/画师/接线/验收五个预设
   lib/                    四个工具、PNG 差异、风格指标、探针、ui-spec、档案、报告、技能注册
   schemas/                ui-spec JSON Schema
   profiles/               内置示例档案 + _schema.md
   skills/ui-restore/      闭环操作手册（安装后自动注册）
-  docs/                   INSTALL / USAGE / paper-mcp / design-sources / teams-integration / knowledge
+  docs/                   INSTALL / USAGE / DETAIL / paper-mcp / design-sources / teams-integration / knowledge
   examples/               static-demo 夹具 + paper 脱敏样本
   scripts/                selftest / release / paper-to-ui-spec
   locale/                 报告文案 zh / en
@@ -127,7 +130,12 @@ dsh-ui-restore/
 
 - **版本**：语义化版本。改工具参数/输出 schema、改档案字段语义、改预设 id 或角色边界都算不兼容变更，
   升 minor 以上并在 `CHANGELOG.md` 写清迁移方式。
-- **发布物**：`package.json` 的 `files` 决定打包内容；发布前跑 `npm pack --dry-run` 确认。
+- **发布物**：`package.json` 的 `files` 是白名单，发布前跑 `npm pack --dry-run` 核对文件数与体积。
+  `docs/` 只发 Markdown（`docs/*.md`、`docs/knowledge/**/*.md`）与 `docs/knowledge/patterns/` 的模板，
+  知识库案例的证据图片只留在仓库；`scripts/fixtures` 必须保留（核心自测依赖）。
+- **可复现安装**：仓库提交 `package-lock.json`，CI 与本地统一用 `npm ci`。
+- **元数据**：`repository` / `homepage` / `bugs` 指向 GitHub 仓库；`exports` 除运行入口外还导出
+  `./cordis.patch.yml`、`./schemas/ui-spec.schema.json`、`./locale/*.json` 与 `./icon`（插件面板图标）。
 - **兼容性声明**：`engines.dsh` 与 `engines.node` 是安装期硬门槛；提高下限属于不兼容变更。
   维护规则见上文「兼容性」。
 - **发布流程**（本地 git + npm，不 push 远端）：

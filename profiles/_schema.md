@@ -49,6 +49,7 @@
     "styleRefs": ["src/views/order/list.vue", "src/components/ui/Table.vue"],
     "outputs": ["spec", "mock"]
   },
+  "styleBaseline": "design/style-baseline.png",
   "api": {
     "source": "project",
     "env": "test",
@@ -88,6 +89,7 @@
 | `design.brief` | string | `""` | 设计简报：目标用户、页面要解决的问题、必须包含的模块 |
 | `design.styleRefs` | string[] | `[]` | 项目里可查的风格参照（同类页面路径、组件、截图文件名）；非数组告警并忽略 |
 | `design.outputs` | enum[] | `["spec","mock"]` | `spec` / `mock` / `paper`；非法值被过滤，空数组或非数组退回 `spec` + `mock`；`paper` 需用户同意 |
+| `styleBaseline` | string | `""` | 风格基线图片路径（相对工作区；PNG/JPEG）。`ui_diff` **未传 `design`** 时用它算风格指标（style-only），不做像素 pass 判定；路径非法/不存在时告警并忽略 |
 | `api.source` | enum | `"none"` | `none` / `project` / `openapi` / `capture`；非法值告警并退回 `none` |
 | `api.env` | enum | `"test"` | `test` / `prod-readonly`；`prod-readonly` 时接线者只允许 GET |
 | `api.enabled` | boolean | `false` | 是否允许接线者访问真实接口；默认关，避免误连生产 |
@@ -104,6 +106,8 @@
 - `design.mode` 写错：只**告警**并退回 `reference`（先按有参考处理，不阻断开工）；`design.styleRefs`
   非数组时告警并忽略；`design.outputs` 非数组或过滤后为空时告警并退回默认 `spec` + `mock`。
 - `api.source` / `api.env` 写错：只**告警**并退回安全缺省（`none` / `test`）；`api.allow` 非数组时告警并忽略。
+- `styleBaseline` 非字符串、过长或指向工作区外/不存在的文件：只**告警**并忽略；没有 `design` 且
+  `styleBaseline` 不可用时，`ui_diff` 报清晰错误，不会静默产出结论。
 - 数值兜底：非正数、非数字的宽高/DPR/合格线会退回默认值。
 - `knownIssues` 支持字符串数组；对象元素会尝试取 `text` / `issue` / `id`。
 - 档案解析结果会写进 run 的 `meta.json` 与报告「夹具声明」，便于复核当时用的是哪份档案。
@@ -113,7 +117,7 @@
 - **设备档**：取项目的真实主档，不要为了「看起来更好」调窄视口。PC 桌面档 + 移动端主档
   各一份通常够用；低分回检档可以放进 `devices[1]`，截图时显式传 `width` / `height`。
 - **合格线**：有产品约定就按约定；没有就用 0.95。设计源质量差（截图压缩、字体不同）时，
-  宁可调高 `tolerance`（工具参数），也不要压低合格线。
+  宁可调高插件配置里的 `tolerance`（不是工具参数，工具参数会被忽略），也不要压低合格线。
 - **规则命令**：只写真正会阻断交付的检查。会把工作区改脏的命令（自动修复、格式化）
   不要写成 `required: true`。
 - **基准页**：三同原则——同类型 → 同宽度 → 同数据量。不同数据量的页面不能互比。

@@ -1,7 +1,12 @@
 {
   "title": "UI 还原验收报告",
+  "meta": {
+    "title": "UI 还原验收",
+    "description": "把前端 UI 还原验收做成闭环：截图、像素差异、样式探针与单文件报告，支持 PNG/JPEG 设计图。"
+  },
   "nav": {
     "overview": "概览",
+    "timings": "运行信息",
     "score": "分数曲线",
     "images": "三图对照",
     "style": "风格指标",
@@ -82,7 +87,43 @@
     "styleOutput": "产出",
     "styleDelta": "差异",
     "styleMetric": "指标",
-    "styleHint": "风格指标只作证据，不参与 pass/fail 判定。"
+    "styleHint": "风格指标只作证据，不参与 pass/fail 判定。",
+    "timings": "耗时",
+    "captureTime": "截图",
+    "diffTime": "像素差异",
+    "probeTime": "样式探针",
+    "reportTime": "报告生成",
+    "duration": "毫秒",
+    "noTimings": "本次没有耗时记录",
+    "styleBaseline": "风格基线",
+    "styleBaselineUsed": "仅作风格参考，不参与像素判定",
+    "styleOnlyNote": "本次未提供 design，只按档案 styleBaseline 计算风格指标；没有像素判定与 pass 结论。",
+    "workspace": "会话工作区",
+    "sessionId": "会话 ID",
+    "callId": "调用 ID",
+    "callTime": "工具调用时间",
+    "designSha": "设计图 SHA-256",
+    "shotSha": "截图 SHA-256",
+    "thresholdDeclared": "声明阈值（已忽略）",
+    "thresholdSource": "阈值来源",
+    "warnings": "告警",
+    "viewportActual": "本次视口（截图/探针）",
+    "profileDevice": "档案设备档",
+    "diffCanvas": "差异画布",
+    "builtin": "内置",
+    "emptyValue": "（空）",
+    "invalidSelector": "（选择器语法非法）",
+    "missingSelector": "（页面没有匹配元素）",
+    "fontSizes": "字号分布",
+    "spacing": "间距分布",
+    "colors": "颜色分布",
+    "modeConflict": "ui_report 收到 mode={requested}，与档案 designSource={kind} 冲突；已按档案记为 {effective}。",
+    "auditDetail": "元素 {elements} 个，溢出 {overflow}，缺 alt {alt}，焦点风险 {focus}，可疑空态 {empty}，内联硬编码色 {hardcoded}",
+    "probeSpec": "契约模式 · 检查 {total} 项 · 通过 {passed} · 未通过 {failed}（高 {high} / 中 {medium} / 低 {low}）{misses}",
+    "probeAudit": "审计模式 · 问题 {total} 条（高 {high} / 中 {medium} / 低 {low}）",
+    "probeMissSuffix": " · 选择器缺失 {count}",
+    "thresholdIgnored": "ui_report 忽略调用参数 threshold={declared}：合格线只从档案取（effective={effective}）。",
+    "auditDisclosure": "本次未做设计比对（审计运行）；本次只跑了审计探针（ui_probe 不带 expected），没有可对照的设计稿或 ui-spec。"
   },
   "severity": {
     "high": "高",
@@ -106,6 +147,15 @@
     "focus": "补充可见焦点样式（:focus-visible 轮廓或阴影）。",
     "empty": "为空态补充占位说明与操作入口。",
     "hardcoded": "把内联硬编码颜色收敛到设计 token。"
+  },
+  "fixTemplates": {
+    "checkAction": "{hint} 期望 {expected}，实际 {actual}{delta}",
+    "regionTarget": "区域 #{index}（{x},{y} {width}×{height}）",
+    "regionAction": "{hint} 该区域差异 {pixels} px（占比 {ratio}）。",
+    "regionMoreTarget": "其余 {count} 个区域",
+    "regionMoreAction": "面积较小的区域先按区域表核对；若差异呈整体位移，优先修布局根因，不要逐块硬调。",
+    "issueMoreTarget": "其余 {count} 条探测发现",
+    "issueMoreAction": "按「探测发现」表逐项处理，优先高严重度。"
   },
   "footer": "由 dsh-ui-restore 生成 · 单文件静态报告，不依赖外部资源与 JavaScript"
 }

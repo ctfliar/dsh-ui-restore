@@ -2,7 +2,8 @@
 /**
  * dsh-ui-restore 自测
  *
- * 默认跑「核心集」：PNG 编解码、像素差异与定位、ui-spec 校验与比较、档案默认值、
+ * 默认跑「核心集」：PNG/JPEG 图像解码（decodeImage 统一入口与不支持格式报错）、
+ * 像素差异与定位、ui-spec 校验与比较、档案默认值、
  * 报告生成（含静态 HTML 的硬约束），以及用假 launcher/page 注入覆盖浏览器层
  * （capturePage / withPage / runProbe），全部不需要浏览器。
  *
@@ -13,18 +14,22 @@
  * 用 --out <dir> 指定目录，用 --keep 保留临时目录（默认也保留，方便取证）。
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import jpeg from 'jpeg-js';
+
 import { decodePng, diffImages, encodePng, readPngSize } from '../lib/diff.js';
+import { decodeImage, readImageSize, sniffImageFormat } from '../lib/image.js';
 import { analyzeStyle, compareStyles } from '../lib/style.js';
 import { UiSpecError, compareElementStyles, readSpecSource, validateSpec } from '../lib/spec.js';
 import { DEFAULT_PROFILE, loadProfile, normalizeProfile } from '../lib/profile.js';
 import { buildReport } from '../lib/report.js';
 import { auditExpressionSource, buildAuditResult, buildSpecResult, runProbe } from '../lib/probe.js';
 import { capturePage, launchBrowser, withPage } from '../lib/browser.js';
-import { ensureDir, mergeMeta, profileSummary, readMeta, writeJsonFile } from '../lib/paths.js';
+import { ensureDir, assertWorkspacePath, mergeMeta, profileSummary, readMeta, sha256File, writeJsonFile } from '../lib/paths.js';
 import { SKILL_FILE, readBundledSkill, registerBundledSkill } from '../lib/skill.js';
 import {
   ENDPOINT_ENV,
@@ -227,6 +232,10 @@ async function loadToolEntryHarness() {
   cpSync(fileURLToPath(new URL('../skills', import.meta.url)), join(dir, 'skills'), { recursive: true });
   // 报告的标签来自 locale/；复制后工具入口 harness 的报告输出与真实插件一致。
   cpSync(fileURLToPath(new URL('../locale', import.meta.url)), join(dir, 'locale'), { recursive: true });
+  // image.js 静态 import jpeg-js（JPEG 支持）：临时目录里也要能解析到它，
+  // 所以按真实安装的样子复制一份（纯 JS、无子依赖）。
+  const requireFromHere = createRequire(import.meta.url);
+  cpSync(dirname(requireFromHere.resolve('jpeg-js/package.json')), join(dir, 'node_modules', 'jpeg-js'), { recursive: true });
   writeModuleStub(
     join(dir, 'node_modules', '@deepseek-ai', 'schemastery'),
     'index.mjs',
@@ -317,6 +326,89 @@ async function coreSuite() {
         }
       }
     }
+  });
+
+  await test('图像解码：decodeImage 按文件头识别 PNG/JPEG，不支持格式给出可读错误', () => {
+    // PNG：与 decodePng 结果一致（统一入口不改变 PNG 语义）。
+    const png = makeDemoPng();
+    const fromPng = decodeImage(png);
+    assertEqual(fromPng.format, 'png', 'PNG 应识别为 png');
+    assertEqual(fromPng.width, 200, 'PNG 宽度');
+    assertEqual(fromPng.height, 120, 'PNG 高度');
+    assertEqual(fromPng.rgba.length, 200 * 120 * 4, 'PNG RGBA 长度');
+    assertEqual(sniffImageFormat(png), 'png', 'sniff PNG');
+    const pngSize = readImageSize(png);
+    assertEqual(pngSize.width, 200, 'readImageSize PNG 宽');
+    assertEqual(pngSize.format, 'png', 'readImageSize PNG 格式');
+
+    // JPEG：用包内小夹具（jpeg-js quality 92 生成，白底 + 蓝色块 + 红色块 + 灰色分隔条）。
+    const jpgBuffer = readFileSync(join(ROOT, 'scripts', 'fixtures', 'design-96x64.jpg'));
+    assertEqual(sniffImageFormat(jpgBuffer), 'jpeg', 'JPEG 文件头识别');
+    const decoded = decodeImage(jpgBuffer);
+    assertEqual(decoded.format, 'jpeg', 'JPEG 格式标记');
+    assertEqual(decoded.width, 96, 'JPEG 宽度');
+    assertEqual(decoded.height, 64, 'JPEG 高度');
+    assertEqual(decoded.rgba.length, 96 * 64 * 4, 'JPEG RGBA 长度');
+    assertEqual(decoded.rgba[3], 255, 'JPEG 没有透明通道，alpha 应为 255');
+    const pixel = (x, y) => Array.from(decoded.rgba.subarray((y * 96 + x) * 4, (y * 96 + x) * 4 + 3));
+    const white = pixel(2, 2);
+    const blue = pixel(20, 16);
+    const red = pixel(70, 44);
+    for (const [channel, value] of white.entries()) assertClose(value, 255, 3, `JPEG 白底像素通道 ${channel}`);
+    assertClose(blue[0], 37, 12, 'JPEG 蓝色块 R');
+    assertClose(blue[1], 99, 12, 'JPEG 蓝色块 G');
+    assertClose(blue[2], 235, 12, 'JPEG 蓝色块 B');
+    assertClose(red[0], 220, 12, 'JPEG 红色块 R');
+    assertClose(red[1], 38, 12, 'JPEG 红色块 G');
+    assertClose(red[2], 38, 12, 'JPEG 红色块 B');
+    assertEqual(readImageSize(jpgBuffer).width, 96, 'readImageSize JPEG 宽');
+    assertEqual(readImageSize(jpgBuffer).progressive, false, '夹具是 baseline JPEG');
+    // diff.js 的旧导出继续可用，且 readPngSize 已能读 JPEG 头（供证据尺寸用）。
+    assertEqual(typeof decodePng, 'function', 'diff.js 仍 re-export decodePng');
+    assertEqual(readPngSize(jpgBuffer).width, 96, 'readPngSize 兼容读取 JPEG 尺寸');
+
+    // 不支持/损坏的输入要给人能看懂的原因，而不是底层解码器的「签名不匹配」。
+    const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')]);
+    assertThrows(() => decodeImage(webp), /不支持 WebP 图片.*只支持 PNG 与 JPEG/, 'WebP 应报清晰错误');
+    assertThrows(() => decodeImage(Buffer.from('GIF89a\u0001\u0000\u0001\u0000\u0000\u0000\u0000;', 'latin1')), /不支持 GIF 图片/, 'GIF 应报清晰错误');
+    assertThrows(() => decodeImage(Buffer.from('this is not an image')), /无法识别的图像格式.*只支持 PNG 与 JPEG/, '未知格式应报清晰错误');
+    assertThrows(() => decodeImage(Buffer.alloc(0)), /图像数据为空/, '空缓冲应报清晰错误');
+    assertThrows(() => decodeImage(Buffer.from('<?xml version="1.0"?><svg/>')), /不支持 SVG 设计稿/, 'SVG 应提示先导出位图');
+    assertThrows(() => decodeImage(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])), /JPEG 解码失败/, '截断 JPEG 解码应报清晰错误');
+    assertThrows(() => readImageSize(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])), /JPEG 缺少 SOF 段/, '截断 JPEG 尺寸应报清晰错误');
+  });
+
+  await test('JPEG 支持：真实资产转 JPEG 后 decodeImage/风格指标/ui_diff 都可读', () => {
+    const png = readFileSync(join(ROOT, 'scripts', 'fixtures', 'style', 'v2-page1.png'));
+    const decodedPng = decodePng(png);
+    // 用真实页面 PNG 重新压成 JPEG（q85，带真实的有损/色度抽样痕迹），不新增仓库资产。
+    const encoded = jpeg.encode({ width: decodedPng.width, height: decodedPng.height, data: Buffer.from(decodedPng.rgba) }, 85);
+    const jpgBuffer = encoded.data;
+    assertEqual(sniffImageFormat(jpgBuffer), 'jpeg', '生成的 JPEG 应被识别');
+    const decodedJpeg = decodeImage(jpgBuffer);
+    assertEqual(decodedJpeg.width, decodedPng.width, 'JPEG 宽度应与源 PNG 一致');
+    assertEqual(decodedJpeg.height, decodedPng.height, 'JPEG 高度应与源 PNG 一致');
+    assertEqual(readImageSize(jpgBuffer).width, decodedPng.width, 'readImageSize 应读 JPEG 尺寸');
+
+    // ui_diff：JPEG vs 自身解码后的 PNG 应完全一致；JPEG vs 源 PNG 只应有有损压缩误差。
+    const samePng = encodePng({ width: decodedJpeg.width, height: decodedJpeg.height, rgba: decodedJpeg.rgba });
+    const self = diffImages(jpgBuffer, samePng, { tolerance: 24, threshold: 0.01 });
+    assertEqual(self.score, 1, 'JPEG vs 自身解码结果应完全一致');
+    const againstPng = diffImages(jpgBuffer, png, { tolerance: 24, threshold: 0.01 });
+    assert(againstPng.score >= 0.99, `JPEG(q85) vs 源 PNG 的还原度应 ≥0.99，实际 ${againstPng.score}`);
+    assertEqual(againstPng.pass, true, 'JPEG vs 源 PNG 应通过默认阈值');
+
+    // 风格指标：JPEG 与源 PNG 的背景/明度/色板应基本一致（有损误差不能改变结论）。
+    const jpegStyle = analyzeStyle(jpgBuffer);
+    const pngStyle = analyzeStyle(png);
+    assertEqual(jpegStyle.background.color, '#ffffff', 'JPEG 背景仍应为白色');
+    assertClose(jpegStyle.background.ratio, pngStyle.background.ratio, 0.02, 'JPEG 背景占比应接近源 PNG');
+    assertClose(jpegStyle.meanLuma, pngStyle.meanLuma, 0.02, 'JPEG 平均明度应接近源 PNG');
+    assert(jpegStyle.contentPalette.length > 0, 'JPEG 内容色板应非空');
+    assert(jpegStyle.edgeDensity > 0, 'JPEG 边缘密度应可读');
+    const compare = compareStyles(jpgBuffer, png);
+    assert(compare.score >= 0.9, `JPEG vs 源 PNG 风格分应 ≥0.9，实际 ${compare.score}`);
+    assert(compare.deltas.paletteDistance < 0.2, `JPEG vs 源 PNG 色板距离应很小，实际 ${compare.deltas.paletteDistance}`);
   });
 
   const designFile = writePng(join(baseDir, 'design.png'), makeDemoPng());
@@ -811,6 +903,642 @@ async function coreSuite() {
     assertEqual(report.summary.pass, true, '报告判定仍由像素分数决定');
   });
 
+  await test('工具入口级：ui_diff 支持 JPEG 设计图/截图，产物仍为 PNG 且证据带尺寸/哈希', async () => {
+    const module = await getToolEntryHarness();
+    const runDir = join(baseDir, 'tool-entry-jpeg-run');
+    ensureDir(runDir);
+    const jpgBytes = readFileSync(join(ROOT, 'scripts', 'fixtures', 'design-96x64.jpg'));
+    const designPath = join(runDir, 'design.jpg');
+    writeFileSync(designPath, jpgBytes);
+    const decoded = decodeImage(jpgBytes);
+    // 截图由同一份解码像素生成 PNG：内容完全一致，score 必须是 1（证明 JPEG 解码真的参与了比较）。
+    const shotPath = writePng(join(runDir, 'shot.png'), encodePng({ width: decoded.width, height: decoded.height, rgba: decoded.rgba }));
+    const definitions = new Map();
+    module.apply({ tools: { register: (definition) => definitions.set(definition.name, definition) } }, {});
+    const exec = { agent: { session: { header: { cwd: baseDir } } } };
+
+    const output = await definitions.get('ui_diff').execute({ design: designPath, shot: shotPath, run: runDir }, exec);
+    assertEqual(output.score, 1, 'JPEG 设计图 vs 同像素 PNG 截图应完全一致');
+    assertEqual(output.pass, true, '应判定通过');
+    assertEqual(output.canvas.width, 96, '差异画布应取 JPEG 设计图宽度');
+    assert(/\.png$/i.test(output.diffPath), '差异图仍输出 PNG');
+    assert(/\.png$/i.test(output.sideBySidePath), '左右对照图仍输出 PNG');
+    assertEqual(output.style.reference.width, 96, '风格参考应读 JPEG 设计图尺寸');
+    assertEqual(output.style.reference.height, 64, '风格参考应读 JPEG 设计图高度');
+
+    const diffJson = JSON.parse(readFileSync(join(runDir, 'diff.json'), 'utf8'));
+    assert(/\.jpg$/i.test(diffJson.design.path), 'diff.json 应记录 JPEG 设计图路径');
+    assertEqual(diffJson.design.size.width, 96, 'diff.json 应记录 JPEG 设计图宽度');
+    assertEqual(diffJson.design.size.height, 64, 'diff.json 应记录 JPEG 设计图高度');
+    assertEqual(diffJson.design.sha256.length, 64, 'diff.json 应记录设计图 SHA-256');
+    assertEqual(diffJson.shot.size.width, 96, 'diff.json 应记录截图宽度');
+    const meta = readMeta(runDir);
+    assertEqual(meta.canvas.width, 96, 'meta.json 应记录 JPEG 画布宽度');
+    assertEqual(meta.style.reference.width, 96, 'meta.json 风格参考应读 JPEG');
+
+    // JPEG 设计图要能进报告：三图对照引用 design.jpg，且照片尺寸可读（不因非 PNG 退化成占位）。
+    const reportDefinitions = new Map();
+    module.apply({ tools: { register: (definition) => reportDefinitions.set(definition.name, definition) } }, {});
+    const report = await reportDefinitions.get('ui_report').execute({ run: runDir }, exec);
+    const html = readFileSync(report.htmlPath, 'utf8');
+    assert(/src="design\.jpg"/.test(html), '报告 HTML 应引用 JPEG 设计图');
+    assert(html.includes('96×64') || html.includes('96 × 64'), '报告应能读出 JPEG 设计图尺寸');
+    assertEqual(report.summary.pass, true, '报告判定应沿用 ui_diff 的 JPEG 结果');
+
+    // 截图也可以是 JPEG：同文件互比应为满分（out 单独指定，避免覆盖 run 里的证据）。
+    const shotJpg = join(runDir, 'shot.jpg');
+    writeFileSync(shotJpg, jpgBytes);
+    const outDir = join(baseDir, 'tool-entry-jpeg-out');
+    const jpgToJpg = await definitions.get('ui_diff').execute({ design: designPath, shot: shotJpg, out: outDir }, exec);
+    assertEqual(jpgToJpg.score, 1, 'JPEG 设计图 vs JPEG 截图（同一文件）应为满分');
+    assertEqual(jpgToJpg.pass, true, 'JPEG vs JPEG 应通过阈值');
+    assertEqual(jpgToJpg.style.score, 1, 'JPEG vs JPEG 风格分应为 1');
+    const outDiffJson = JSON.parse(readFileSync(join(outDir, 'diff.json'), 'utf8'));
+    assert(/\.jpg$/i.test(outDiffJson.shot.path), 'diff.json 应记录 JPEG 截图路径');
+    assertEqual(outDiffJson.shot.size.width, 96, 'diff.json 应记录 JPEG 截图宽度');
+  });
+
+  // ---- 安全边界：路径约束 / 阈值锁死 / 证据身份（t1） ----------------------
+
+  await test('工具入口级：工作区外路径被拒绝，越界不读不写', async () => {
+    // 断言函数本身：工作区内（含相对路径）放行，绝对/相对越界都抛错。
+    assertEqual(
+      resolve(assertWorkspacePath(baseDir, 'nested/run-1/shot.png', 'path')),
+      resolve(baseDir, 'nested', 'run-1', 'shot.png'),
+      '工作区内相对路径应解析到工作区',
+    );
+    assertThrows(() => assertWorkspacePath(baseDir, join(ROOT, 'x.png'), 'design'), /超出工作区/, '绝对路径越界应拒绝');
+    assertThrows(() => assertWorkspacePath(baseDir, '..', 'run'), /超出工作区/, '相对路径越界应拒绝');
+
+    const module = await getToolEntryHarness();
+    const calls = { capture: 0, diff: 0, probe: 0 };
+    const definitions = new Map();
+    module.apply(
+      { tools: { register: (definition) => definitions.set(definition.name, definition) } },
+      {},
+      {
+        capturePage: async () => { calls.capture += 1; throw new Error('越界路径不应调用 capturePage'); },
+        diffImages: () => { calls.diff += 1; throw new Error('越界路径不应调用 diffImages'); },
+        runProbe: async () => { calls.probe += 1; throw new Error('越界路径不应调用 runProbe'); },
+      },
+    );
+    const exec = { agent: { id: 'sess-boundary', session: { header: { cwd: baseDir } } } };
+    const expectRejected = async (run, label) => {
+      try {
+        await run();
+      } catch (error) {
+        assert(/超出工作区/.test(String(error.message)), `${label} 应报「超出工作区」；实际：${error.message}`);
+        return;
+      }
+      throw new Error(`${label} 应被拒绝，但没有抛错`);
+    };
+
+    const insideShot = writePng(join(baseDir, 'boundary-shot.png'), makeDemoPng());
+    const outsideDesign = join(ROOT, 'examples', 'static-demo', 'index.html');
+    const outsideDir = join(ROOT, 'output-boundary-should-not-exist');
+
+    await expectRejected(
+      () => definitions.get('ui_diff').execute({ design: outsideDesign, shot: insideShot, out: outsideDir }, exec),
+      'ui_diff 设计稿越界',
+    );
+    await expectRejected(
+      () => definitions.get('ui_diff').execute({ design: insideShot, shot: outsideDesign }, exec),
+      'ui_diff 截图越界',
+    );
+    await expectRejected(
+      () => definitions.get('ui_diff').execute({ design: insideShot, shot: insideShot, run: '..' }, exec),
+      'ui_diff run 相对越界',
+    );
+    await expectRejected(
+      () => definitions.get('ui_capture').execute({ url: 'file:///fake/index.html', path: join(ROOT, 'shot-should-not-exist.png') }, exec),
+      'ui_capture path 越界',
+    );
+    await expectRejected(
+      () => definitions.get('ui_capture').execute({ url: 'file:///fake/index.html', run: ROOT }, exec),
+      'ui_capture run 越界',
+    );
+    await expectRejected(
+      () => definitions.get('ui_probe').execute({ url: 'file:///fake/index.html', out: join(ROOT, 'probe-should-not-exist.json') }, exec),
+      'ui_probe out 越界',
+    );
+    await expectRejected(
+      () => definitions.get('ui_report').execute({ run: ROOT }, exec),
+      'ui_report run 越界',
+    );
+    await expectRejected(
+      () => definitions.get('ui_report').execute({ run: join(baseDir, 'boundary-run'), design: outsideDesign }, exec),
+      'ui_report design 越界',
+    );
+
+    assertEqual(calls.capture + calls.diff + calls.probe, 0, '越界路径不应触发浏览器/差异/探针实现');
+    assert(!existsSync(outsideDir), '越界的 out 目录不应被创建');
+    assert(!existsSync(join(ROOT, 'shot-should-not-exist.png')), '越界的截图不应写盘');
+    assert(!existsSync(join(ROOT, 'probe-should-not-exist.json')), '越界的探针结果不应写盘');
+  });
+
+  await test('工具入口级：阈值锁死——调用参数被忽略，meta/diff.json 记录 declared/effective', async () => {
+    const module = await getToolEntryHarness();
+    const runDir = join(baseDir, 'tool-entry-lock-run');
+    ensureDir(runDir);
+    const profileDir = join(baseDir, 'ui-restore-profiles');
+    ensureDir(profileDir);
+    writeJsonFile(join(profileDir, 'locked.json'), {
+      id: 'locked',
+      label: '锁定阈值档案',
+      devices: [{ id: 'desktop', width: 200, height: 120, dpr: 1 }],
+      thresholds: { score: 0.9, maxRounds: 3 },
+    });
+    const designPath = writePng(join(runDir, 'design.png'), makeDemoPng());
+    const shotPath = writePng(join(runDir, 'shot.png'), makeDemoPng({ color: [220, 38, 38, 255] }));
+
+    const diffCalls = [];
+    const fakeDiff = (designBuffer, shotBuffer, options) => {
+      diffCalls.push({ ...options });
+      return {
+        score: 0.85,
+        diffRatio: 0.15,
+        regions: [],
+        diffPng: pngBytes(designPath),
+        sideBySidePng: pngBytes(designPath),
+        canvas: { width: 200, height: 120 },
+        mismatchPixels: 150,
+        totalPixels: 1000,
+        sizeMismatch: {
+          design: { width: 200, height: 120 },
+          shot: { width: 200, height: 120 },
+          rescaled: { width: 200, height: 120 },
+          offset: { x: 0, y: 0 },
+          aspectDelta: 0,
+          mismatch: false,
+        },
+        scale: 1,
+        threshold: options.threshold,
+        tolerance: options.tolerance,
+        pass: 0.15 <= options.threshold,
+      };
+    };
+    const definitions = new Map();
+    module.apply({ tools: { register: (definition) => definitions.set(definition.name, definition) } }, {}, { diffImages: fakeDiff });
+    const exec = { agent: { id: 'sess-lock', session: { header: { cwd: baseDir } } } };
+
+    const output = await definitions.get('ui_diff').execute({
+      design: designPath,
+      shot: shotPath,
+      profile: 'locked',
+      run: runDir,
+      threshold: 0.5,
+      tolerance: 99,
+    }, exec);
+    assertEqual(diffCalls.length, 1, '应调用一次 diff');
+    assertClose(diffCalls[0].threshold, 0.1, 1e-9, 'diff 应收到档案阈值 1-0.9');
+    assertEqual(diffCalls[0].tolerance, 24, 'diff 应收到插件配置容差 24');
+    assertClose(output.threshold, 0.1, 1e-9, '输出 threshold 应为生效值');
+    assertEqual(output.tolerance, 24, '输出 tolerance 应为生效值');
+    assertEqual(output.pass, false, 'pass 仍按档案阈值判定（0.15 > 0.1）');
+    assert(output.warnings.some((warning) => warning.includes('threshold=0.5')), '应告警 threshold 覆盖被忽略');
+    assert(output.warnings.some((warning) => warning.includes('tolerance=99')), '应告警 tolerance 覆盖被忽略');
+
+    const diffJson = JSON.parse(readFileSync(join(runDir, 'diff.json'), 'utf8'));
+    assertClose(diffJson.threshold, 0.1, 1e-9, 'diff.json threshold 应为生效值');
+    assertEqual(diffJson.thresholds.declared.threshold, 0.5, 'diff.json 应记录 declared threshold');
+    assertEqual(diffJson.thresholds.declared.tolerance, 99, 'diff.json 应记录 declared tolerance');
+    assertClose(diffJson.thresholds.effective.threshold, 0.1, 1e-9, 'diff.json 应记录 effective threshold');
+    assertEqual(diffJson.thresholds.effective.tolerance, 24, 'diff.json 应记录 effective tolerance');
+    assertClose(diffJson.thresholds.score, 0.9, 1e-9, 'diff.json 应记录档案合格线');
+    const meta = readMeta(runDir);
+    assertEqual(meta.thresholds.declared.threshold, 0.5, 'meta 应记录 declared threshold');
+    assertClose(meta.thresholds.effective.threshold, 0.1, 1e-9, 'meta 应记录 effective threshold');
+
+    const reportOutput = await definitions.get('ui_report').execute({ run: runDir, profile: 'locked', threshold: 0.1 }, exec);
+    assertEqual(reportOutput.summary.pass, false, 'ui_report 合格线应取档案 0.9，而不是声明的 0.1');
+    assert(reportOutput.warnings.some((warning) => warning.includes('threshold=0.1')), 'ui_report 应告警 threshold 覆盖被忽略');
+    const metaAfter = readMeta(runDir);
+    assertEqual(metaAfter.thresholds.report.declared, 0.1, 'meta 应记录 ui_report declared');
+    assertClose(metaAfter.thresholds.report.effective, 0.9, 1e-9, 'meta 应记录 ui_report effective');
+    const markdown = readFileSync(join(reportOutput.outDir, 'report.md'), 'utf8');
+    assert(markdown.includes('声明阈值（已忽略）'), '报告应显示声明阈值被忽略');
+    assert(markdown.includes('10.00%'), '报告应显示声明阈值 10%');
+    assert(markdown.includes('阈值来源'), '报告应显示阈值来源');
+  });
+
+  await test('工具入口级：证据身份——diff.json/meta.json/报告记录会话、时间与 SHA-256', async () => {
+    const module = await getToolEntryHarness();
+    const runDir = join(baseDir, 'tool-entry-evidence-run');
+    ensureDir(runDir);
+    const designPath = writePng(join(runDir, 'design.png'), makeDemoPng());
+    const shotPath = writePng(join(runDir, 'shot.png'), makeDemoPng({ color: [12, 34, 56, 255] }));
+    const designSha = sha256File(designPath);
+    const shotSha = sha256File(shotPath);
+    assert(/^[0-9a-f]{64}$/.test(designSha), '设计稿 SHA-256 应为 64 位十六进制');
+
+    const definitions = new Map();
+    module.apply({ tools: { register: (definition) => definitions.set(definition.name, definition) } }, {}, {});
+    const exec = { agent: { id: 'session-evidence-1', session: { header: { cwd: baseDir } } }, callId: 'call-evidence-1' };
+    await definitions.get('ui_diff').execute({ design: designPath, shot: shotPath, run: runDir }, exec);
+
+    const diffJson = JSON.parse(readFileSync(join(runDir, 'diff.json'), 'utf8'));
+    assertEqual(diffJson.evidence.session.id, 'session-evidence-1', 'diff.json 应记录会话 id');
+    assertEqual(resolve(diffJson.evidence.session.cwd), resolve(baseDir), 'diff.json 应记录会话 cwd');
+    assertEqual(diffJson.evidence.call.id, 'call-evidence-1', 'diff.json 应记录调用 id');
+    assert(!Number.isNaN(Date.parse(diffJson.evidence.call.startedAt)), 'diff.json 应记录可解析的调用时间');
+    assertEqual(diffJson.evidence.inputs.design.sha256, designSha, 'diff.json 应记录设计稿 SHA-256');
+    assertEqual(diffJson.evidence.inputs.shot.sha256, shotSha, 'diff.json 应记录截图 SHA-256');
+    assertEqual(diffJson.design.sha256, designSha, 'diff.json design.sha256');
+    assertEqual(diffJson.shot.sha256, shotSha, 'diff.json shot.sha256');
+
+    const meta = readMeta(runDir);
+    assertEqual(meta.evidence.session.id, 'session-evidence-1', 'meta 应记录会话 id');
+    assertEqual(meta.evidence.inputs.design.sha256, designSha, 'meta 应记录设计稿 SHA-256');
+    assertEqual(meta.evidence.inputs.shot.sha256, shotSha, 'meta 应记录截图 SHA-256');
+
+    const report = await definitions.get('ui_report').execute({ run: runDir }, exec);
+    const html = readFileSync(report.htmlPath, 'utf8');
+    const markdown = readFileSync(report.markdownPath, 'utf8');
+    for (const token of ['会话工作区', 'session-evidence-1', 'call-evidence-1', '工具调用时间', designSha, shotSha]) {
+      assert(html.includes(token), `HTML 证据区应包含 ${token}`);
+    }
+    assert(markdown.includes(designSha) && markdown.includes(shotSha), 'Markdown 应包含两张图 SHA-256');
+    assert(markdown.includes('session-evidence-1'), 'Markdown 应包含会话 id');
+
+    // 显式产物路径模式（无 run）也要带上报告侧的会话与哈希证据。
+    const explicit = await definitions.get('ui_report').execute({
+      design: designPath,
+      shot: shotPath,
+      out: join(baseDir, 'tool-entry-evidence-explicit'),
+    }, exec);
+    const explicitHtml = readFileSync(explicit.htmlPath, 'utf8');
+    assert(explicitHtml.includes('session-evidence-1'), '显式路径报告的 HTML 应包含会话 id');
+    assert(explicitHtml.includes(designSha) && explicitHtml.includes(shotSha), '显式路径报告应包含两张图 SHA-256');
+    assert(explicitHtml.includes('工具调用时间'), '显式路径报告应包含工具调用时间');
+  });
+
+  // ---- 观测性 / 风格基线 / i18n（t5） --------------------------------------
+
+  await test('i18n：zh/en key 集合一致，meta 有 title/description 且不声明 meta.detail', () => {
+    const flattenKeys = (value, prefix = '') => {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return [prefix];
+      return Object.keys(value).flatMap((key) => flattenKeys(value[key], prefix === '' ? key : `${prefix}.${key}`)).sort();
+    };
+    const zh = JSON.parse(readFileSync(join(ROOT, 'locale', 'zh.json'), 'utf8'));
+    const en = JSON.parse(readFileSync(join(ROOT, 'locale', 'en.json'), 'utf8'));
+    const zhKeys = flattenKeys(zh);
+    const enKeys = flattenKeys(en);
+    assertEqual(JSON.stringify(zhKeys), JSON.stringify(enKeys), 'zh/en locale key 集合应完全一致');
+    for (const locale of [zh, en]) {
+      assert(typeof locale.meta?.title === 'string' && locale.meta.title !== '', 'meta.title 应非空');
+      assert(typeof locale.meta?.description === 'string' && locale.meta.description !== '', 'meta.description 应非空');
+      assert(!Object.prototype.hasOwnProperty.call(locale.meta, 'detail'), 'meta.detail 只能是一行特性图，本插件不得声明');
+    }
+    assert(zh.meta.title !== en.meta.title, 'zh/en meta.title 应各自本地化');
+  });
+
+  await test('i18n：英文报告（含证据/耗时/风格/修复）不出现硬编码中文标签', () => {
+    const runDir = join(baseDir, 'i18n-en-run');
+    ensureDir(runDir);
+    const designPath = writePng(join(runDir, 'design.png'), makeDemoPng());
+    const shotPath = writePng(join(runDir, 'shot.png'), makeDemoPng({ color: [220, 38, 38, 255] }));
+    writePng(join(runDir, 'diff.png'), pngBytes(designPath));
+    writePng(join(runDir, 'side-by-side.png'), pngBytes(designPath));
+    const at = '2026-11-28T02:00:00.000Z';
+    const analysis = {
+      width: 96,
+      height: 64,
+      background: { color: '#ffffff', ratio: 0.9 },
+      palette: [{ color: '#ffffff', ratio: 0.9 }],
+      contentPalette: [{ color: '#2563eb', ratio: 0.1 }],
+      colorCount: 2,
+      meanLuma: 0.8,
+      meanSat: 0.2,
+      flatRatio: 0.9,
+      edgeDensity: 0.05,
+      fillRatio: 0.1,
+      bbox: { x: 0, y: 0, width: 96, height: 64, ratio: 0.1 },
+    };
+    writeJsonFile(join(runDir, 'diff.json'), {
+      tool: 'dsh-ui-restore',
+      version: '0.5.0',
+      generatedAt: at,
+      score: 0.92,
+      diffRatio: 0.08,
+      regions: [{ index: 1, x: 4, y: 4, width: 20, height: 10, pixels: 200, ratio: 0.03, severity: 'high' }],
+      sizeMismatch: {
+        design: { width: 96, height: 64 },
+        shot: { width: 96, height: 64 },
+        rescaled: { width: 96, height: 64 },
+        offset: { x: 0, y: 0 },
+        aspectDelta: 0,
+        mismatch: false,
+      },
+      scale: 1,
+      threshold: 0.1,
+      tolerance: 24,
+      thresholds: {
+        score: 0.9,
+        diffRatio: 0.1,
+        declared: { threshold: null, tolerance: null },
+        effective: { score: 0.9, threshold: 0.1, tolerance: 24 },
+        source: { score: 'profile:demo.thresholds.score', threshold: 'profile:demo.thresholds.score', tolerance: 'config.tolerance' },
+        warnings: [],
+      },
+      style: {
+        score: 0.97,
+        deltas: { paletteDistance: 0.02, luma: 0.01, sat: 0.01, edgeDensity: 0.1, fillRatio: 0.02 },
+        notes: ['palette matches the reference'],
+        reference: analysis,
+        output: analysis,
+      },
+      styleBaseline: { path: join(runDir, 'style-baseline.png'), sha256: 'c'.repeat(64), used: true },
+      pass: true,
+      evidence: {
+        session: { cwd: baseDir, id: 'sess-en' },
+        call: { id: 'call-en', startedAt: at, finishedAt: at },
+        tool: { name: 'ui-restore', version: '0.5.0' },
+        inputs: { design: { path: designPath, sha256: 'a'.repeat(64) }, shot: { path: shotPath, sha256: 'b'.repeat(64) } },
+      },
+      timings: { capture: { ms: 12.5, at }, diff: { ms: 34.5, at } },
+      warnings: [],
+    });
+    writeJsonFile(join(runDir, 'probe.json'), {
+      tool: 'dsh-ui-restore',
+      version: '0.5.0',
+      generatedAt: at,
+      mode: 'audit',
+      url: 'file:///demo/index.html',
+      viewport: { width: 96, height: 64, dpr: 1 },
+      summary: { total: 2, high: 1, medium: 1, low: 0 },
+      issues: [
+        { kind: 'overflow', severity: 'high', selector: 'html', detail: 'horizontal overflow: 320 > 300' },
+        { kind: 'alt', severity: 'medium', selector: 'img', detail: 'image misses alt text' },
+      ],
+      audit: {
+        elementsScanned: 20,
+        truncated: false,
+        palette: [{ value: 'rgb(15, 23, 42)', count: 2 }],
+        fontSizes: [{ value: '16px', count: 1 }],
+        spacing: [{ value: '8px', count: 1 }],
+        imagesWithoutAlt: 1,
+        focusRisks: 0,
+        emptyStates: 0,
+        hardcodedColors: 0,
+        overflow: 1,
+        horizontalScroll: true,
+      },
+      timings: { probe: { ms: 8, at } },
+    });
+    const profile = {
+      id: 'demo',
+      label: 'Demo',
+      designSource: { kind: 'image' },
+      device: { id: 'desktop', width: 96, height: 64, dpr: 1 },
+      thresholds: { score: 0.9, maxRounds: 3 },
+      knownIssues: [],
+      notes: 'notes',
+    };
+    mergeMeta(runDir, {
+      mode: 'design',
+      url: 'file:///demo/index.html',
+      viewport: { width: 96, height: 64, dpr: 1 },
+      profile,
+      evidence: JSON.parse(readFileSync(join(runDir, 'diff.json'), 'utf8')).evidence,
+      timings: { capture: { ms: 12.5, at }, diff: { ms: 34.5, at }, probe: { ms: 8, at } },
+    });
+    const report = buildReport({ run: runDir, cwd: baseDir, profile, locale: 'en' });
+    const html = readFileSync(report.htmlPath, 'utf8');
+    const markdown = readFileSync(report.markdownPath, 'utf8');
+    const cjk = /[\u4e00-\u9fff]/;
+    assert(!cjk.test(html), `英文报告 HTML 不应含硬编码中文标签；首个：${html.match(cjk)?.[0] ?? ''}`);
+    assert(!cjk.test(markdown), `英文报告 Markdown 不应含硬编码中文标签；首个：${markdown.match(cjk)?.[0] ?? ''}`);
+    for (const token of ['Run info', 'Capture', 'Pixel diff', 'Style probe', 'Report', 'Session cwd', 'Style baseline']) {
+      assert(html.includes(token), `英文报告应包含本地化标签 ${token}`);
+    }
+    assert(html.includes('Declared threshold') === false, '未声明阈值时不应出现声明阈值行');
+
+    // 第二份：契约模式 + 调用方声明 threshold，覆盖 spec 标签、阈值弃用提示与 selector miss。
+    writeJsonFile(join(runDir, 'probe.json'), {
+      tool: 'dsh-ui-restore',
+      version: '0.5.0',
+      generatedAt: at,
+      mode: 'spec',
+      url: 'file:///demo/index.html',
+      viewport: { width: 96, height: 64, dpr: 1 },
+      spec: { name: 'Demo spec', path: 'ui-spec.json', elements: 1 },
+      summary: { total: 1, passed: 0, failed: 1, high: 1, medium: 0, low: 0, selectorMisses: 1 },
+      checks: [{
+        selector: '.button',
+        label: 'Primary',
+        property: 'backgroundColor',
+        expected: '#2563eb',
+        actual: '#ff0000',
+        delta: 1,
+        deltaText: 'channel delta 1',
+        severity: 'high',
+        pass: false,
+      }],
+      selectorMisses: [{ selector: '.missing', label: 'missing', invalid: true }],
+    });
+    const specReport = buildReport({ run: runDir, cwd: baseDir, profile, locale: 'en', threshold: 0.1 });
+    const specHtml = readFileSync(specReport.htmlPath, 'utf8');
+    const specMarkdown = readFileSync(specReport.markdownPath, 'utf8');
+    assert(!cjk.test(specHtml), `英文契约报告 HTML 不应含硬编码中文标签；首个：${specHtml.match(cjk)?.[0] ?? ''}`);
+    assert(!cjk.test(specMarkdown), `英文契约报告 Markdown 不应含硬编码中文标签；首个：${specMarkdown.match(cjk)?.[0] ?? ''}`);
+    assert(specHtml.includes('Spec mode'), '英文契约报告应包含 Spec mode');
+    assert(specHtml.includes('Declared threshold'), '英文报告应显示声明阈值被忽略');
+    assert(specHtml.includes('Threshold source'), '英文报告应显示阈值来源');
+    assert(specHtml.includes('invalid selector syntax'), '英文报告应本地化选择器非法说明');
+    assert(specMarkdown.includes('Warnings'), '英文 Markdown 应显示阈值弃用告警');
+  });
+
+  await test('工具入口级：capture/diff/probe/report 耗时写入 meta 与报告运行信息', async () => {
+    const module = await getToolEntryHarness();
+    const runDir = join(baseDir, 'tool-entry-timing-run');
+    ensureDir(runDir);
+    const shotPath = writePng(join(runDir, 'shot.png'), makeDemoPng());
+    const designPath = writePng(join(runDir, 'design.png'), makeDemoPng());
+    const fakeCapture = async (options) => ({
+      path: options.path,
+      width: 96,
+      height: 64,
+      dpr: 1,
+      cssWidth: 96,
+      cssHeight: 64,
+      fullPage: false,
+      selector: '',
+      url: 'file:///fake/index.html',
+      title: 'fake',
+      channel: 'fake-channel',
+    });
+    const fakeDiff = () => ({
+      score: 0.95,
+      diffRatio: 0.05,
+      regions: [],
+      diffPng: pngBytes(designPath),
+      sideBySidePng: pngBytes(designPath),
+      canvas: { width: 96, height: 64 },
+      mismatchPixels: 10,
+      totalPixels: 200,
+      sizeMismatch: {
+        design: { width: 96, height: 64 },
+        shot: { width: 96, height: 64 },
+        rescaled: { width: 96, height: 64 },
+        offset: { x: 0, y: 0 },
+        aspectDelta: 0,
+        mismatch: false,
+      },
+      scale: 1,
+      threshold: 0.01,
+      tolerance: 24,
+      pass: true,
+    });
+    const fakeProbe = async (options) => ({
+      mode: 'audit',
+      url: options.url,
+      title: 'fake',
+      viewport: { width: 96, height: 64, dpr: 1 },
+      summary: { total: 0, high: 0, medium: 0, low: 0, selectorMisses: 0 },
+      issues: [],
+      selectorMisses: [],
+      audit: {
+        elementsScanned: 1,
+        truncated: false,
+        palette: [],
+        fontSizes: [],
+        spacing: [],
+        imagesWithoutAlt: 0,
+        focusRisks: 0,
+        emptyStates: 0,
+        hardcodedColors: 0,
+        overflow: 0,
+        horizontalScroll: false,
+      },
+    });
+    const definitions = new Map();
+    module.apply(
+      { tools: { register: (definition) => definitions.set(definition.name, definition) } },
+      { locale: 'en' },
+      { capturePage: fakeCapture, diffImages: fakeDiff, runProbe: fakeProbe },
+    );
+    const exec = { agent: { id: 'sess-timing', session: { header: { cwd: baseDir } } }, callId: 'call-timing' };
+
+    await definitions.get('ui_capture').execute({ url: 'file:///fake/index.html', run: runDir }, exec);
+    await definitions.get('ui_diff').execute({ design: designPath, shot: shotPath, run: runDir }, exec);
+    await definitions.get('ui_probe').execute({ url: 'file:///fake/index.html', run: runDir }, exec);
+    const report = await definitions.get('ui_report').execute({ run: runDir }, exec);
+
+    const meta = readMeta(runDir);
+    for (const tool of ['capture', 'diff', 'probe', 'report']) {
+      assert(Number.isFinite(meta.timings?.[tool]?.ms), `meta.timings.${tool}.ms 应为数字`);
+      assert(meta.timings[tool].ms >= 0, `meta.timings.${tool}.ms 应非负`);
+      assert(typeof meta.timings[tool].at === 'string', `meta.timings.${tool}.at 应为时间戳`);
+    }
+    const markdown = readFileSync(join(report.outDir, 'report.md'), 'utf8');
+    const html = readFileSync(report.htmlPath, 'utf8');
+    assert(markdown.includes('## Run info'), '报告 Markdown 应有运行信息段');
+    assert(html.includes('id="timings"'), '报告 HTML 应有运行信息段');
+    for (const token of ['Capture', 'Pixel diff', 'Style probe', 'Report']) {
+      assert(markdown.includes(token), `运行信息应包含 ${token}`);
+    }
+    assert(/\bms\b/.test(markdown), '耗时单位应可读');
+  });
+
+  await test('工具入口级：ctx.logger 记录启动/channel/降级，缺失或抛错时静默', async () => {
+    const module = await getToolEntryHarness();
+    const info = [];
+    const warn = [];
+    const debug = [];
+    const makeCtx = (logger) => ({ tools: { register: () => {} }, ...(logger ? { logger } : {}) });
+
+    module.apply(makeCtx({
+      info: (message) => info.push(message),
+      warn: (message) => warn.push(message),
+      debug: (message) => debug.push(message),
+    }), {});
+    assert(info.some((message) => message.includes('dsh-ui-restore@')), '启动日志应包含工具版本');
+    assert(info.some((message) => message.includes('chromium') && message.includes('chrome') && message.includes('msedge')), '启动日志应包含 channel 顺序');
+    assert(warn.some((message) => message.includes('技能降级')), '缺 skills service 时应记录技能降级');
+    assert(debug.some((message) => message.includes('降级')), '未配置 executablePath 时应记录浏览器降级策略');
+
+    // 没有 logger：不抛错、不产生输出。
+    module.apply(makeCtx(undefined), {});
+    // logger 自己抛错：必须静默，不能影响插件挂载。
+    module.apply(makeCtx({
+      info: () => { throw new Error('logger down'); },
+      warn: () => { throw new Error('logger down'); },
+      debug: () => { throw new Error('logger down'); },
+    }), {});
+    assert(true, '无 logger / logger 抛错时 apply 不应失败');
+  });
+
+  await test('工具入口级：档案 styleBaseline 在无 design 时只算风格指标，非法路径 warning 并忽略', async () => {
+    const module = await getToolEntryHarness();
+    const runDir = join(baseDir, 'tool-entry-style-baseline-run');
+    ensureDir(runDir);
+    const profileDir = join(baseDir, 'ui-restore-profiles');
+    ensureDir(profileDir);
+    const shotPath = writePng(join(runDir, 'shot.png'), makeDemoPng({ color: [220, 38, 38, 255] }));
+    const baselinePath = writePng(join(runDir, 'style-baseline.png'), makeDemoPng());
+    writeJsonFile(join(profileDir, 'style-baseline.json'), {
+      id: 'style-baseline',
+      label: 'Style baseline',
+      devices: [{ id: 'desktop', width: 96, height: 64, dpr: 1 }],
+      thresholds: { score: 0.9, maxRounds: 3 },
+      styleBaseline: join('tool-entry-style-baseline-run', 'style-baseline.png'),
+    });
+    writeJsonFile(join(profileDir, 'style-baseline-invalid.json'), {
+      id: 'style-baseline-invalid',
+      label: 'Style baseline invalid',
+      devices: [{ id: 'desktop', width: 96, height: 64, dpr: 1 }],
+      thresholds: { score: 0.9, maxRounds: 3 },
+      styleBaseline: 'missing-style-baseline.png',
+    });
+
+    const definitions = new Map();
+    module.apply({ tools: { register: (definition) => definitions.set(definition.name, definition) } }, {}, {});
+    const exec = { agent: { id: 'sess-style-baseline', session: { header: { cwd: baseDir } } } };
+
+    const styleOnly = await definitions.get('ui_diff').execute({
+      shot: shotPath,
+      profile: 'style-baseline',
+      run: runDir,
+    }, exec);
+    assertEqual(styleOnly.styleOnly, true, '无 design + 有效 styleBaseline 应进入 style-only');
+    assert(styleOnly.style?.reference && styleOnly.style?.output, 'style-only 应输出参考与产出风格分析');
+    assertEqual(styleOnly.styleBaseline.used, true, 'styleBaseline 应标记 used=true');
+    assert(styleOnly.score === undefined, 'style-only 不应产生像素 score');
+    assert(styleOnly.pass === undefined, 'style-only 不应产生 pass 判定');
+    const styleDiffJson = JSON.parse(readFileSync(join(runDir, 'diff.json'), 'utf8'));
+    assertEqual(styleDiffJson.styleOnly, true, 'diff.json 应标记 styleOnly');
+    assert(styleDiffJson.styleBaseline?.used === true, 'diff.json 应记录 styleBaseline');
+    assert(!Object.prototype.hasOwnProperty.call(styleDiffJson, 'pass'), 'style-only diff.json 不应写 pass');
+    const styleMeta = readMeta(runDir);
+    assertEqual(styleMeta.styleOnly, true, 'meta 应标记 styleOnly');
+    assert(styleMeta.styleBaseline?.path, 'meta 应记录 styleBaseline');
+    const report = await definitions.get('ui_report').execute({ run: runDir }, exec);
+    const markdown = readFileSync(report.markdownPath, 'utf8');
+    assert(markdown.includes('风格基线'), '报告应显示风格基线');
+    assert(markdown.includes('风格指标'), '报告应显示风格指标段');
+    assert(markdown.includes('运行信息'), '报告应显示运行信息段');
+
+    // 非法 styleBaseline + 有 design：warning 并忽略，正常像素判定。
+    const designPath = writePng(join(runDir, 'design.png'), makeDemoPng());
+    const invalidWithDesign = await definitions.get('ui_diff').execute({
+      design: designPath,
+      shot: shotPath,
+      profile: 'style-baseline-invalid',
+      out: join(runDir, 'invalid-baseline-out'),
+    }, exec);
+    assert(invalidWithDesign.warnings.some((warning) => warning.includes('styleBaseline')), '非法 styleBaseline 应产生 warning');
+    assert(Number.isFinite(invalidWithDesign.score), '有 design 时仍应完成像素判定');
+
+    // 非法 styleBaseline + 无 design：清晰报错，不静默。
+    let error;
+    try {
+      await definitions.get('ui_diff').execute({ shot: shotPath, profile: 'style-baseline-invalid' }, exec);
+    } catch (caught) {
+      error = caught;
+    }
+    assert(error && /styleBaseline/.test(String(error.message)), '无 design 且 styleBaseline 非法时应报清晰错误');
+  });
+
   // ---- 假浏览器：浏览器层核心逻辑（B1/B2 回归，不需要 --browser） ----------
 
   await test('浏览器层注入：capturePage 返回 path/width/height/dpr/channel/cssWidth/cssHeight', async () => {
@@ -1020,7 +1748,7 @@ async function coreSuite() {
       viewport: { width: 200, height: 120, dpr: 1 },
       history: [{ round: 1, score: diff.score }],
     });
-    const report = buildReport({ run: runDir, cwd: ROOT, locale: 'zh' });
+    const report = buildReport({ run: runDir, cwd: baseDir, locale: 'zh' });
     assert(existsSync(report.htmlPath), '报告 HTML 应生成');
     const html = readFileSync(report.htmlPath, 'utf8');
     assertEqual((html.match(/<img /g) ?? []).length, 3, '报告应含三张图');
@@ -1549,6 +2277,18 @@ async function coreSuite() {
     const empty = normalizeProfile({ id: 'bad-empty', design: { outputs: ['diorama'] } }, { warnings: emptyWarnings });
     assertEqual(JSON.stringify(empty.profile.design.outputs), JSON.stringify(['spec', 'mock']), '全非法 design.outputs 回默认 spec + mock');
     assert(emptyWarnings.some((warning) => warning.includes('design.outputs')), '全非法 design.outputs 告警');
+
+    // styleBaseline：可选字符串；非字符串告警并忽略，合法值去空白保留。
+    assertEqual(normalizeProfile({ id: 'no-baseline' }).profile.styleBaseline, '', '缺省 styleBaseline 为空');
+    assertEqual(
+      normalizeProfile({ id: 'baseline', styleBaseline: ' design/baseline.png ' }).profile.styleBaseline,
+      'design/baseline.png',
+      'styleBaseline 应去空白保留',
+    );
+    const baselineWarnings = [];
+    const badBaseline = normalizeProfile({ id: 'bad-baseline', styleBaseline: 123 }, { warnings: baselineWarnings });
+    assertEqual(badBaseline.profile.styleBaseline, '', '非字符串 styleBaseline 应忽略');
+    assert(baselineWarnings.some((warning) => warning.includes('styleBaseline')), '非字符串 styleBaseline 应告警');
   });
 
   await test('探针页面采集函数语法自检 + 不引用模块作用域变量', () => {
@@ -1636,7 +2376,7 @@ async function coreSuite() {
 
   let reportResult;
   await test('ui_report 产出 report.md + report.html（三图、差异表、无外链/无 JS/无 base64）', () => {
-    reportResult = buildReport({ run: reportRun, cwd: ROOT, profile: profileSummary(demoProfile), locale: 'zh' });
+    reportResult = buildReport({ run: reportRun, cwd: baseDir, profile: profileSummary(demoProfile), locale: 'zh' });
     assert(existsSync(reportResult.markdownPath), 'report.md 应存在');
     assert(existsSync(reportResult.htmlPath), 'report.html 应存在');
     const html = readFileSync(reportResult.htmlPath, 'utf8');
@@ -1667,7 +2407,7 @@ async function coreSuite() {
 
   await test('ui_report 无设计稿模式与显式产物路径模式都能生成', () => {
     const explicit = buildReport({
-      cwd: ROOT,
+      cwd: baseDir,
       design: reportDesign,
       shot: reportShot,
       diffPath: diffPngPath,
@@ -1680,7 +2420,7 @@ async function coreSuite() {
     assert(existsSync(join(baseDir, 'report-explicit', 'design.png')), '设计稿应物化到报告目录');
 
     const probeOnly = buildReport({
-      cwd: ROOT,
+      cwd: baseDir,
       probePath: join(reportRun, 'probe.json'),
       out: join(baseDir, 'report-probe-only'),
       mode: 'none',
@@ -1723,7 +2463,7 @@ async function coreSuite() {
         horizontalScroll: true,
       },
     });
-    const report = buildReport({ run: auditRun, cwd: ROOT, mode: 'none', locale: 'zh' });
+    const report = buildReport({ run: auditRun, cwd: baseDir, mode: 'none', locale: 'zh' });
     const html = readFileSync(report.htmlPath, 'utf8');
     assert(html.includes('字号分布'), '应展示字号分布');
     assert(html.includes('9px×2'), '字号分布应带次数');
@@ -1749,7 +2489,7 @@ async function coreSuite() {
       canvas: { width: 1000, height: 700 },
     });
     const profile = profileSummary(loadProfile('static-demo', { cwd: ROOT }));
-    const report = buildReport({ run: runDir, cwd: ROOT, mode: 'none', profile, locale: 'zh' });
+    const report = buildReport({ run: runDir, cwd: baseDir, mode: 'none', profile, locale: 'zh' });
     assertEqual(report.summary.mode, 'design', '档案 designSource=image 时 mode 应为 design');
     assertEqual(report.summary.designSource, 'image', '设计源应保持档案声明');
 
@@ -1786,7 +2526,7 @@ async function coreSuite() {
       regions: [],
       style,
     });
-    const report = buildReport({ run: styleRun, cwd: ROOT, locale: 'zh' });
+    const report = buildReport({ run: styleRun, cwd: baseDir, locale: 'zh' });
     const html = readFileSync(report.htmlPath, 'utf8');
     const markdown = readFileSync(report.markdownPath, 'utf8');
     assert(html.includes('风格指标'), 'HTML 应含风格指标段');
@@ -1802,7 +2542,7 @@ async function coreSuite() {
 
     // 向后兼容：没有 style 数据的报告（审计运行）不显示该段，也不出现锚点。
     const auditOnly = buildReport({
-      cwd: ROOT,
+      cwd: baseDir,
       probePath: join(reportRun, 'probe.json'),
       out: join(baseDir, 'report-style-absent'),
       mode: 'none',
@@ -1992,7 +2732,7 @@ async function browserSuite(config) {
     });
     const report = buildReport({
       run: runDir,
-      cwd: ROOT,
+      cwd: baseDir,
       profile: profileSummary(loadProfile('static-demo', { cwd: ROOT })),
       locale: 'zh',
     });

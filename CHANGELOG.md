@@ -5,6 +5,46 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-28
+
+### Added
+
+- **安全边界**：写路径统一过 `assertWorkspacePath`，工作区外绝对路径与 `../` 越界直接拒绝（不读不写）；
+  `ui_diff` / `ui_report` 的阈值只取档案，调用参数被忽略并记录 `declared/effective/source`；
+  `diff.json` / `meta.json` / 报告记录 cwd、session id、callId、调用时间与双图 SHA-256。
+- **JPEG 支持**：新增 `lib/image.js` 的统一 `decodeImage`（按文件头识别 PNG/JPEG），`ui_diff` / 风格指标可直读
+  JPG 设计图与截图；WebP/GIF 等给出明确不支持提示。
+- **黄金 E2E 与 CI**：`scripts/e2e.mjs` 跑通 file:// 夹具的 capture → 自比 diff → 契约探针（19/19）→ report；
+  `lib/browser.js` 新增加法式 `withBrowserSession`（一次 launch 多任务）；`.github/workflows/ci.yml`
+  增加 check（含知识库索引校验）与 e2e 两个 job。
+- **打包**：补 `repository` / `homepage` / `bugs`、`exports ./icon` 与 `./locale/*.json`、`docs/DETAIL.md`、
+  `package-lock.json`、`jpeg-js` 依赖；`files` 白名单瘦身，包体约 1.47MB → 0.88MB。
+- **观测性**：工具入口记录 `meta.timings.{capture,diff,probe,report}`，报告新增「运行信息」段；
+  `ctx.logger` 可用时记录版本、channel、降级与技能不可用。
+- **风格基线**：档案新增可选 `styleBaseline`；`ui_diff` 未传 `design` 时可只算风格指标（style-only），
+  不产生像素差异与 `pass`。
+- **i18n**：`locale` 增加 `meta.title` / `meta.description`（不声明 `meta.detail`，保持 README 回退）；
+  zh/en 各 146 key 对齐，英文报告模板不再硬编码中文标签。
+- **知识库索引**：`scripts/knowledge-index.mjs` 生成 `docs/knowledge/INDEX.md`，`--check` 接入 CI。
+
+### Changed
+
+- **无档案默认阈值 0.01 → 0.05**：现在与缺省档案 `thresholds.score = 0.95` 对齐。升级后若仍希望更严格，
+  请在 profile 里显式提高 `thresholds.score`，不要依赖默认值。
+- `ui_diff` / `ui_report` 的 `design` / `shot` 参数描述改为「设计图/截图路径（PNG/JPEG）」，与 JPEG 支持一致。
+- `scripts/e2e.mjs` 的耗时对比标注为「按单次启动估算，仅供趋势参考」。
+
+### Fixed
+
+- `ui_report` 的合格线来源与 `declared/effective` 记录补齐；报告夹具区展示阈值来源与「声明阈值（已忽略）」。
+- 路径断言覆盖 `ui_probe` 的 `out`（在 `runProbe` 之前校验）。
+
+### Known
+
+- `design.mode = from-scratch` 的设计评审门仍是流程约束，不是代码强制；这一点已写进 SKILL / USAGE。
+- 档案 profile JSON 与 `ui_probe` 的 `expected` JSON 作为只读输入，允许工作区外路径；输出路径仍受边界约束。
+- 自测：`check` 通过，`selftest` 54 PASS、`selftest:browser` 61 PASS、`e2e` 10 PASS。
+
 ## [0.4.0] - 2026-11-27
 
 ### Added

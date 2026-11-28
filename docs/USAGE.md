@@ -52,6 +52,7 @@ node scripts/selftest.mjs
     "styleRefs": [],
     "outputs": ["spec", "mock"]
   },
+  "styleBaseline": "design/style-baseline.png",
   "api": {
     "source": "project",
     "env": "test",
@@ -80,17 +81,44 @@ node scripts/selftest.mjs
 要点：
 
 - `devices[0]` 是截图/探针的缺省视口；移动端页面把手机档放第一位。
-- `thresholds.score` 是还原度合格线；`ui_diff` 的默认允许差异率 = `1 - score`。
+- `thresholds.score` 是还原度合格线；`ui_diff` 的默认允许差异率 = `1 - score`。判定阈值由插件锁死，
+  调用参数不能覆盖（见 2B 节）。
+  没有 profile 时使用缺省档案 `thresholds.score = 0.95`（即允许差异率 0.05）；0.4.x 及更早的无档案默认是
+  0.01，升级后请按项目实际补 profile 或显式调高 `score`，不要依赖默认值。
 - `rules[].required = true` 的命令由画师/接线者/验收者在各自会话里跑；规则不过不进截图环节。
 - `designSource.kind` 只能是 `none` / `image` / `mcp`；非法值直接报错。
 - `design.mode` 默认 `reference`（有设计源，或走无素材模式）；只有用户明确要求「没有设计稿，你来设计」
   时才写 `from-scratch`。`brief` 写页面目标与关键区块，`styleRefs` 只放可读路径/URL，
   `outputs` 取 `spec` / `mock`（可加 `paper`：表示用户同意由 Paper 出图，且会话里得有 Paper 写工具）。
   设计师的产出落 `<run>/design/`；**不得编造品牌色**，新增取值写进 `design.json` 的 `assumptions`。
+- `styleBaseline` 是可选的风格基线图片路径（PNG/JPEG，相对工作区）。`ui_diff` **未传 `design`** 时，
+  用它作为风格参考只算风格指标（style-only），不产生像素差异与 `pass`；路径非法/不存在时告警并忽略。
+  有 `design` 时 `styleBaseline` 只记录不参与判定。
 - `api` 是交给接线者与验收者的接线约定：`source` 取 `project` / `openapi` / `capture` / `none`，
   `env` 取 `test` / `prod-readonly`，`allow` 是允许访问的 host/path 前缀，`authEnv` 只写环境变量名。
   插件不联网、不读凭据；只做视觉还原时留默认值即可。
 - 未知字段只告警、不报错，方便先跑通再补。
+
+## 2B. 安全边界与判定可信
+
+0.5.0 起，下面几条由插件代码强制，验收前先了解边界：
+
+- **路径边界**：工具参数里的 `path` / `out` / `run` / `shot` / `design` / `diffPath` / `diffJson` / `probePath`
+  必须是工作区内路径。相对路径按工作区解析；绝对路径指向工作区外、或用 `../` 跳出工作区会直接报错，
+  **不读也不写**（不会把验收产物静默写到项目外）。设计图与截图建议统一放进 `<runRoot>/<页面>-r1/`。
+  例外是**只读输入**：档案 profile JSON 与 `ui_probe` 的 `expected` JSON 可以由调用方提供工作区外路径，
+  它们只被读取、不会被写回；输出路径仍受上述边界约束。
+- **阈值锁死**：`ui_diff` 的 `threshold` / `tolerance` 调用参数只用于留证，不参与判定；判定阈值取档案
+  `thresholds.score`（`threshold = 1 - score`），像素容差取插件配置 `tolerance`。调用参数若提供，
+  会被忽略并在结果里返回 warning；`declared`（声明值）与 `effective`（生效值）同时写进
+  `diff.json.thresholds` 与 `meta.json.thresholds`。`ui_report` 的合格线同理，记录在
+  `meta.json.thresholds.report`。`pass` 语义不变：仍按档案阈值判定。
+- **证据身份**：`diff.json.evidence` 与 `meta.json.evidence` 记录本次会话 cwd、会话 id（exec 可取时）、
+  工具调用 id 与时间、design / shot 的 SHA-256；`report.md` 与 `report.html` 的夹具区会展开这些证据，
+  以及阈值来源和「声明阈值（已忽略）」。谁在什么时间验了哪两张图，可追溯。
+- **已知限制**：`design.mode = from-scratch` 的**设计评审门仍是流程约束，不是代码强制**。
+  插件不会阻止画师在 `<run>/review/design-review.json` 出现 `verdict = pass` 之前动工，
+  也不会校验评审文件本身；队长必须在派实现前人工确认，验收者在报告里写明评审结论。
 
 ## 3. 五种设计源
 
@@ -115,6 +143,30 @@ node scripts/selftest.mjs
 档案写 `designSource.kind = "image"`、`designSource.path = "design/orders.png"`。
 验收用 `ui_diff({ design, shot, profile, run })` 做像素比对；`ui_probe` 审计模式补规范问题。
 截图与设计图比例不一致时 `ui_diff` 会等比缩放，并在结果里标 `sizeMismatch`。
+
+**支持格式（0.5.0 起）**：`ui_diff` 的 `design` / `shot` 输入与 `analyzeStyle` / `compareStyles`
+按**文件头**识别 **PNG** 与 **JPEG**（`.jpg` / `.jpeg`），不看扩展名；两者可以混用
+（如 JPEG 设计图 + PNG 截图）。**输出固定为 PNG**：`diff.png`、`side-by-side.png` 与
+`ui_capture` 截图都不会因为输入是 JPEG 而变成 JPEG。证据里的图片尺寸也按文件头读取
+（PNG 走 IHDR、JPEG 走 SOF 段），`diff.json.design.size` / `shot.size` 对 JPEG 同样可用。
+
+JPEG 解码走 jpeg-js（纯 JS，随包依赖），支持单帧 8 位 baseline / progressive。
+**不支持 WebP / GIF / BMP / TIFF / AVIF / HEIC / SVG**：遇到会在解码前直接报
+「不支持 X 图片：dsh-ui-restore 只支持 PNG 与 JPEG」并提示先转换，不会静默按 PNG 处理，
+也不会拿扩展名猜格式。
+
+JPEG 的限制（写进验收报告，别当没发生）：
+
+- **有损压缩噪声**：JPEG 设计图 vs 截图会带入压缩误差。同一页面 PNG 转 JPEG 实测：
+  q92 基本无差、q85 约 0.02%、q75 约 0.15%（照片类内容误差更大）。
+  合格线仍只取档案 `thresholds.score`、容差仍只取插件 `tolerance`——不要为了 JPEG 放宽参数
+  （调用参数本来也会被忽略并告警）；差异区域出现零星小块时先看热力图确认是不是压缩噪声。
+- **EXIF 方向**：带旋转/翻转信息的照片不会自动转正；设计图请先转正，或直接导出 PNG。
+- **非常规 JPEG**：12 位精度、算术编码、多帧/动画、损坏文件会在读尺寸或解码阶段报错，
+  请先用图片工具转成 8 位单帧 JPEG 或 PNG。CMYK 变体不保证颜色一致。
+- **PNG 侧限制不变**：8 位、非隔行；16 位 / 隔行 PNG 请先转换。
+- **风格指标**：JPEG 只是解码后的像素，风格分照常计算；有损误差会轻微拉低
+  `style.score` 与 `paletteDistance`，判读时按 §3.2 的分档并结合 `style.notes`。
 
 `ui_diff` 还会新增一份**风格证据** `style`（不影响像素判定）：
 
@@ -146,8 +198,29 @@ v2 灰度化 ≤0.85、v2 红蓝互换 ≤0.90。
 风格指标只作证据：`pass` 仍只由 `diffRatio <= threshold` 决定，`style` 不参与判定，
 也不改动既有字段；阈值与权重集中在 `lib/style.js` 的 `STYLE_CONSTANTS`。
 完整的 `style` 会同时写进 `diff.json` 与 `meta.json`，`ui_report` 据此渲染「风格指标」段。
-需要脚本化复用时可直接调用纯函数 `analyzeStyle(pngBuffer)` / `compareStyles(refBuffer, outBuffer)`
-（不启动浏览器，复用 `lib/diff.js` 的 PNG 解码）。
+需要脚本化复用时可直接调用纯函数 `analyzeStyle(imageBuffer)` / `compareStyles(refBuffer, outBuffer)`
+（不启动浏览器；PNG/JPEG 统一走 `lib/image.js` 的 `decodeImage`，PNG 解码器与 JPEG 解码依赖见该模块头部说明）。
+
+### 3.2.1 风格基线（无设计图时的 style-only）
+
+没有设计图、但有一张「风格参考图」时，在档案里写：
+
+```json
+{ "styleBaseline": "design/style-baseline.png" }
+```
+
+然后省略 `design` 调用：
+
+```json
+{ "shot": "<run>/shot.png", "profile": "<档案 id>", "run": "<runRoot>/<页面>-r1" }
+```
+
+- `ui_diff` 用 `styleBaseline` 作为风格参考，只算 `style`（色板/明度/饱和/边缘/填充）；
+  **不产生像素 `score` / `diffRatio` / 区域 / `pass`**，`diff.json` 标 `styleOnly: true`。
+- 这是**风格证据**，不能当达标判定：还原度判定仍要有 `design`（或按 §3.4/§3.5 走探针与设计包）。
+- `styleBaseline` 非法（工作区外、不存在、不是字符串）时：`ui_diff` 记 warning 并忽略；
+  若同时没有 `design`，会报清晰错误，不会静默产出结论。
+- 报告「夹具声明」会写风格基线路径 + SHA-256，并注明「仅作风格参考，不参与像素判定」。
 
 ### 3.3 线上 URL（把线上/参考页当基准）
 
@@ -255,6 +328,10 @@ Paper 写类工具在普通验收流程里仍然禁用（见 3.1），设计模�
 ## 5. 阈值与轮次
 
 - `score`：还原度（1 - 差异率）合格线，默认 0.95；`ui_diff` 的 `threshold = 1 - score`。
+  阈值只从档案取：调用参数 `threshold` / `tolerance` 被忽略并告警，`declared` / `effective`
+  见 `diff.json.thresholds`、`meta.json.thresholds`；容差来自插件配置 `tolerance`。
+- 证据身份：`diff.json.evidence` / `meta.json.evidence` / 报告夹具区记录会话 cwd、会话 id、
+  调用时间与 design / shot 的 SHA-256；判定与报告应引用这些字段。
 - 风格分（`ui_diff` 的 `style.score`）只作证据，不进入合格线、不改变 `pass`。参考分档：≥0.95 很接近 /
   0.90–0.95 可用 / 0.80–0.90 差异明显 / <0.80 回归明显（见 §3.2）；用于发现「像素够像但风格不像」的回归。
 - `maxRounds`：允许的最大轮次，默认 3；由队长执行，插件只透出。
@@ -264,6 +341,18 @@ Paper 写类工具在普通验收流程里仍然禁用（见 3.1），设计模�
 - 收敛即停；连续两轮提升很小或超过 `maxRounds` 视为停滞，剩余差异分「必改 / 可接受 / 需产品确认」
   交人决策。
 
+## 5B. 观测性、日志与 i18n
+
+- **耗时**：`ui_capture` / `ui_diff` / `ui_probe` / `ui_report` 各自计时，写入
+  `meta.json.timings`（`capture` / `diff` / `probe` / `report`，每条含 `ms` 与 `at`）；
+  `diff.json` / `probe.json` 也带各自耗时。报告有独立「运行信息」段展示已有耗时。
+  耗时只作观测，不参与 pass 判定。
+- **日志**：插件挂载时若 `ctx.logger` 可用，会记录版本、locale、runRoot/profileDir、
+  浏览器 channel 顺序或 `executablePath`；降级（未配置 executablePath、skills service 缺失）
+  也会记录。`ctx.logger` 不可用或日志调用抛错时完全静默，不影响工具挂载。
+- **i18n**：报告文案来自 `locale/zh.json` 与 `locale/en.json`，两语言 key 集合必须一致；
+  `meta.title` / `meta.description` 供插件页展示（不声明 `meta.detail`，README 作为回退）。
+
 ## 6. 怎么读 report.html
 
 `report.html` 是单文件、无 JavaScript、无外链，可直接双击打开：
@@ -271,14 +360,17 @@ Paper 写类工具在普通验收流程里仍然禁用（见 3.1），设计模�
 | 区块 | 看什么 |
 | --- | --- |
 | 概览卡片 | 还原度、合格线、模式、轮次、问题计数 |
+| 运行信息 | capture / diff / probe / report 各段耗时（毫秒）与时间；只展示本次实际发生的段 |
 | 分数曲线 | 每轮 score 的变化，是否在收敛 |
 | 三图对照 | 设计图 / 截图 / 差异热力图（无设计源时显示占位说明） |
 | 风格指标 | 参考 vs 产出的风格分、色板距离（背景色 + 内容色板）、明度/饱和、边缘密度、填充率、背景与内容主色板、说明；没有 style 数据时整段省略 |
+| 风格基线 | 档案 `styleBaseline` 的路径、SHA-256 与用途（仅风格参考，不参与像素判定） |
 | 差异区域 | 按 severity → 面积排序的连通域，含坐标、尺寸、像素占比 |
 | 属性差异 | 契约模式的逐属性 `expected / actual / delta / severity` 表 |
 | 探测发现 | 审计问题与字号/间距/颜色分布 |
 | 修复清单 | 按优先级收敛到关键项 |
-| 夹具声明 | 本次视口 / 档案设备档 / 差异画布、设计源、已知问题 |
+| 证据身份 | 会话 cwd / 会话 id / 调用 id 与时间 / design 与 shot 的 SHA-256 |
+| 夹具声明 | 本次视口 / 档案设备档 / 差异画布、设计源、阈值声明值与来源（含「声明阈值（已忽略）」）、已知问题 |
 
 审计运行没有 expected 时，报告会显式写「本次未做设计比对（审计运行）」，不要把它当成比过设计稿。
 
@@ -286,7 +378,15 @@ Paper 写类工具在普通验收流程里仍然禁用（见 3.1），设计模�
 
 | 问题 | 处理 |
 | --- | --- |
+| 设计图是 JPEG，还能验收吗 | 能：`ui_diff` 与风格指标都支持 PNG 与 JPEG，可混用（JPEG 设计图 + PNG 截图）；输出仍是 PNG，证据里的尺寸与哈希照常记录 |
+| 报「不支持 WebP/GIF 图片」 | 输入不是 PNG/JPEG（按文件头判定，不看扩展名）；先转成 PNG 或 JPEG 再重试，工具不会替你转码 |
+| JPEG 设计图比对出现零星差异块 | JPEG 有损压缩的正常噪声（UI 截图 q85 约 0.02%、q75 约 0.15%，照片类内容更大）；看热力图确认没有成片差异，别为了它放宽阈值 |
 | 截图尺寸和设计图不一样 | 正常；`ui_diff` 等比缩放并标 `sizeMismatch`。仍建议同设备档截图 |
+| 工具报「超出工作区」 | 把设计图/截图/输出目录放进工作区（建议 run 目录）；工作区外的绝对路径会被拒绝，不会写盘 |
+| 传 `threshold` / `tolerance` 想放宽判定 | 无效：参数被忽略并告警，`pass` 仍按档案阈值算；要改合格线只能改档案 `thresholds.score` 并写明谁批准 |
+| 报告里出现「声明阈值（已忽略）」 | 有人用调用参数尝试覆盖阈值；以「阈值来源」和生效值为准，不要引用声明值下结论 |
+| 设计评审没 pass 就开始实现 | 工具拦不住（已知限制）；队长必须在派画师前人工确认 `<run>/review/design-review.json` 的 `verdict = pass` |
+| 证据里的哈希/会话 id 对不上 | 图被换过或不是同一会话验的；重新截图并重跑 `ui_diff`，不要把旧报告当本轮证据 |
 | 差异区域很碎 | 页面有整体位移（padding 改动等）时会出现多条细区域；按面积与 severity 排序看 |
 | 风格分低但像素还原度很高 | 风格指标只提示色板/明暗/纹理差异（如参考图有渐变、阴影、纹理，被像素容差吸收），不改变判定；按 `style.notes` 的方向核对对应属性 |
 | `selectorMisses` 不为 0 | 让画师更新 selector 或给映射说明，不要留给验收者猜 |

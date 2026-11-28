@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check + selftest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # npm ci 需要 package-lock.json；本仓库暂未提交 lockfile 时退回 npm install，
+      # 保证 CI 从第一天就能跑；提交 lockfile 后自动走 npm ci。
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "::warning::未提交 package-lock.json，临时退回 npm install；提交 lockfile 后此步自动使用 npm ci。"
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Syntax check
+        run: |
+          npm run check
+          node --check scripts/e2e.mjs
+
+      - name: Knowledge index check
+        run: node scripts/knowledge-index.mjs --check
+
+      - name: Selftest (core, no browser)
+        run: node scripts/selftest.mjs
+
+  e2e:
+    name: golden e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: check
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "::warning::未提交 package-lock.json，临时退回 npm install；提交 lockfile 后此步自动使用 npm ci。"
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Install Chromium (with system deps)
+        run: npx playwright-core install --with-deps chromium
+
+      # 黄金链路：file:// 静态夹具 → 多视口截图（一次 launch）→ 自比 diff →
+      # 契约探针 → report；脚本内部断言失败会以非 0 退出。
+      - name: Golden E2E (file:// fixtures, real browser)
+        run: node scripts/e2e.mjs
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: output/e2e
+          if-no-files-found: ignore
+          retention-days: 7
